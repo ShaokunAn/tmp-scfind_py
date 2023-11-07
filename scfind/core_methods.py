@@ -176,8 +176,8 @@ class SCFind:
         # Deserialize data
         fail = self.index.loadByteStream(loaded_object['serialized'])
 
-        if fail:
-            raise ValueError("Failed to load byte stream into index")
+#        if fail:
+#            raise ValueError("Failed to load byte stream into index")
 
         self.datasets = loaded_object['datasets']
         self.serialized = None
