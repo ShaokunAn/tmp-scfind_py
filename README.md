@@ -1,28 +1,23 @@
-![scfind](https://scfind.sanger.ac.uk/img/scfind.png)
+<img src=https://scfind.sanger.ac.uk/img/scfind.png alt="scfind" height="200">
 
 # scfind - Fast searches of large collections of single cell data
 
-Single cell technologies have made it possible to profile millions of cells, but for these resources to be useful they mush be eash to query and access. To facilitate interactive and intuitive access to single cell data we have developed scfind, a search engine for cell atlas. Scfind can be used to evaluate marker genes, to perform in silico gating, and to identify both cell-type specific and housekeeping genes. An interactive interface website with 9 single cell datasets is available at https://scfind.sanger.ac.uk. 
-
-
-
+Single-cell technologies have enabled the profiling of millions of cells. However, for these vast resources to be fully leveraged, they must be easily queryable and accessible. To facilitate interactive and intuitive access to single-cell data, we have developed scfind, a search engine for cell atlases. Scfind can be utilized to evaluate marker genes, perform in silico gating, and identify both cell-type specific and housekeeping genes. An interactive interface with access to nine single-cell datasets is available at [scfind.sanger.ac.uk](https://scfind.sanger.ac.uk).
 
 ## Installation
-scfind is a package packed in python and R (the scfind R library is available at https://github.com/hemberg-lab/scfind) with cpp extensions. To install scfind python package, it's supposed to first install Armadillo library, a c++ linear algebra library.
+scfind is available as a package for Python and R, with C++ extensions. The scfind R library is accessible at [our GitHub repository](https://github.com/hemberg-lab/scfind). Before installing the scfind Python package, the Armadillo library, a C++ linear algebra library, must be installed.
 
-**Step 1**
+**Step 1: Install Armadillo**
 
-Install Armadillo: if you have installed Homebrew, you can install Armadillo just by 
+If you have Homebrew  installed, Armadillo can be installed with the following command:
 
 ```bash
 brew install armadillo
 ```
 
-  or you can download the source file and compile it mannually. See the documentations of Armadillo (https://arma.sourceforge.net). 
+Alternatively, you can download the source files and compile them mannually. See the [Armadillo documentation](https://arma.sourceforge.net) for more details.
 
-**Step 2**
-
-Install scfind package
+**Step 2: Install the scfind package**
 
 ```bash
 git clone https://github.com/ShaokunAn/tmp-scfind_py.git
@@ -35,7 +30,7 @@ pip install .
 
 ## Tutorials
 
-scfind provides efficient query and access to large single cell data through an interface which is both very fast and familiar to users from any background. It's main function is to build a index. With the index, user can query and access the dataset efficiently. 
+scfind offers efficient querying and access to large single-cell datasets through an interface that is both fast and user-friendly. Its primary function is to build an index, which enables user to query the dataset efficiently.
 
 **Examples**
 
@@ -43,45 +38,46 @@ scfind provides efficient query and access to large single cell data through an 
 import scfind
 import anndata
 
-# Read original anndata
+# Read the original AnnData
 adata = anndata.read_h5ad('your/path/to/data.h5ad')
 
-# Build index
+# Build the index
 scfind_index = scfind.SCFind()
-scfind_index.buildCellTypeIndex(adata=addata, dataset_name='your_data_name', cell_type_label='your_cell_type_label', feature_name='your_feature_name') 
+scfind_index.buildCellTypeIndex(adata=addata, dataset_name='your_data_name', 
+cell_type_label='your_cell_type_label', 
+feature_name='your_feature_name') 
 ```
 
-The `cell_type_label` should be the name of one column in `adata.obs`  which is supposed to be the cell type annotations. The `feature_name` should be the name of one column in `adata.var`  which is the feature annotations (like gene names). 
+The `cell_type_label` should correspond to a column in `adata.obs` that contains the cell type annotations. The `feature_name` should correspond to a column in `adata.var`  that contains feature annotations, like gene names.
 
-With the built index, users are allowed to perform multiple kinds of queries, including find cell type markers, find housekeeping genes across cell types, and perform hypergeometric test to find cell types that siginificantly expresse provided genes. Here're some query functions in scfind. Please check out scfind [Nature methods paper](https://www.nature.com/articles/s41592-021-01076-9) for more functionalities.
+With the built index, users can perform various queries, such as finding cell type markers, identifying housekeeping genes across cell types, and conducting hypergeometric tests to discover significantly enriched cell types for provided genes. Below are some query functions in scfind. For additional functionalities, please refer to the scfind [Nature methods paper](https://www.nature.com/articles/s41592-021-01076-9).
 
 ```python
-# find cell type markers
+# Find cell type markers
 cell_types = ['your_interested_cell_types']
-# you can get the total cell types in index by print(scfind_index.cellTypeNames())
 ct_markers = scfind_index.cellTypeMarkers(cell_types=cell_types, )
 print(ct_markers)
 
-# find housekeeping genes across cell types
+# Find housekeeping genes across cell types
 hk_genes = scfind_index.findHouseKeepingGenes(cell_types=scfind_index.cellTypeNames())
 print(hk_genes)
 
-# find significantly enriched cell types for specific genes
+# Find significantly enriched cell types for specific genes
 genes = ['your_interesed_genes']
 hypQ_cts = scfind_index.hyperQueryCellTypes(genes)
 print(hypQ_cts)
 
-# merge two index
+# Merge two indices
 index1 = scfind.SCFind()
-index1.buildCellTypeIndex(adata=adata1, ...) # build index first
+index1.buildCellTypeIndex(adata=adata1, ...) # build the first index
 index2 = scfind.SCFind()
 index2.buildCellTypeIndex(adata=adata2, ...)
-index1.mergeDataset(index2) # now index1 is the merged index containing adata1 and adata2
+index1.mergeDataset(index2) # now index1 contains both adata1 and adata2
 
-# save index
+# Save the index
 scfind_index.saveObject("your/save/path.bin")
 
-# load index
+# Load the index
 load_index = scfind.SCFind()
 load_index.loadObject("your/load/path.bin")
 ```
@@ -89,6 +85,7 @@ load_index.loadObject("your/load/path.bin")
 
 
 ## Citation
+Please cite our work using the following reference:
 
 ```
 @article{lee2021fast,
