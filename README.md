@@ -50,7 +50,7 @@ feature_name='your_feature_name')
 
 The `cell_type_label` should correspond to a column in `adata.obs` that contains the cell type annotations. The `feature_name` should correspond to a column in `adata.var`  that contains feature annotations, like gene names.
 
-With the built index, users can perform various queries, such as finding cell type markers, identifying housekeeping genes across cell types, and conducting hypergeometric tests to discover significantly enriched cell types for provided genes. Below are some query functions in scfind. For additional functionalities, please refer to the scfind [Nature methods paper](https://www.nature.com/articles/s41592-021-01076-9).
+With the built index, users can perform various queries, such as finding cell type markers, identifying housekeeping genes across cell types, and conducting hypergeometric tests to discover significantly enriched cell types for provided genes. Below are some query functions in scfind. For additional functionalities, please refer to the scfind [Nature methods](https://www.nature.com/articles/s41592-021-01076-9) paper.
 
 ```python
 # Find cell type markers
