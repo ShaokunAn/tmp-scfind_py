@@ -55,7 +55,7 @@ The `cell_type_label` should be the name of one column in `adata.obs`  which is 
 
 With the built index, users are allowed to perform multiple kinds of queries, including find cell type markers, find housekeeping genes across cell types, and perform hypergeometric test to find cell types that siginificantly expresse provided genes. Here're some query functions in scfind. Please check out scfind 
 
-[Nature methods paper]: https://www.nature.com/articles/s41592-021-01076-9
+[Nature methods paper]: https://www.nature.com/articles/s41592-021-01076-9	"test"
 
 for more functionalities.
 
