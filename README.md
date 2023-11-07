@@ -5,6 +5,8 @@
 Single cell technologies have made it possible to profile millions of cells, but for these resources to be useful they mush be eash to query and access. To facilitate interactive and intuitive access to single cell data we have developed scfind, a search engine for cell atlas. Scfind can be used to evaluate marker genes, to perform in silico gating, and to identify both cell-type specific and housekeeping genes. An interactive interface website with 9 single cell datasets is available at https://scfind.sanger.ac.uk. 
 
 
+
+
 ## Installation
 scfind is a package packed in python and R (the scfind R library is available at https://github.com/hemberg-lab/scfind) with cpp extensions. To install scfind python package, it's supposed to first install Armadillo library, a c++ linear algebra library.
 
@@ -29,11 +31,9 @@ pip install -r requirements.txt
 pip install .
 ```
 
-...
+
 
 ## Tutorials
-
-...
 
 scfind provides efficient query and access to large single cell data through an interface which is both very fast and familiar to users from any background. It's main function is to build a index. With the index, user can query and access the dataset efficiently. 
 
@@ -53,11 +53,7 @@ scfind_index.buildCellTypeIndex(adata=addata, dataset_name='your_data_name', cel
 
 The `cell_type_label` should be the name of one column in `adata.obs`  which is supposed to be the cell type annotations. The `feature_name` should be the name of one column in `adata.var`  which is the feature annotations (like gene names). 
 
-With the built index, users are allowed to perform multiple kinds of queries, including find cell type markers, find housekeeping genes across cell types, and perform hypergeometric test to find cell types that siginificantly expresse provided genes. Here're some query functions in scfind. Please check out scfind 
-
-[Nature methods paper]: https://www.nature.com/articles/s41592-021-01076-9	"test"
-
-for more functionalities.
+With the built index, users are allowed to perform multiple kinds of queries, including find cell type markers, find housekeeping genes across cell types, and perform hypergeometric test to find cell types that siginificantly expresse provided genes. Here're some query functions in scfind. Please check out scfind [Nature methods paper](https://www.nature.com/articles/s41592-021-01076-9) for more functionalities.
 
 ```python
 # find cell type markers
