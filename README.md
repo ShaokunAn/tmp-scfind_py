@@ -1,4 +1,4 @@
-<img src=https://scfind.sanger.ac.uk/img/scfind.png height="200">
+![scfind](https://scfind.sanger.ac.uk/img/scfind.png)
 
 # scfind - Fast searches of large collections of single cell data
 
