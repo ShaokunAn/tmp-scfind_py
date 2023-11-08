@@ -55,23 +55,23 @@ void SerializationDB::deserializeEliasFano(EliasFano& ef, int quantization_bits)
   int cells;
 
   read(cells);
-  std:cout << "cells: " << cells << std::endl;
+  std::cout << "cells: " << cells << std::endl;
   read(ef.l);
-  std:cout << "read ef.l done!" << std::endl;
+  std::cout << "read ef.l done!" << std::endl;
   read(ef.idf);
-  std:cout << "read ef.idf done!" << std::endl;
+  std::cout << "read ef.idf done!" << std::endl;
 
   int H_size, L_size, quant_size;
   unsigned char test;
   read(test);
-  std:cout << "read test done!" << std::endl;
+  std::cout << "read test done!" << std::endl;
   assert(test == 0xFF);
   read(H_size);
-  std:cout << "read H_size done!" << std::endl;
+  std::cout << "read H_size done!" << std::endl;
   read(L_size);
-  std:cout << "read L_size done!" << std::endl;
+  std::cout << "read L_size done!" << std::endl;
   read(quant_size);
-  std:cout << "read quant_size done!" << std::endl;
+  std::cout << "read quant_size done!" << std::endl;
 
   // Multiply by eight, shift three positions
   // std::cout << "l = " << ef.l << std::endl;
@@ -85,9 +85,9 @@ void SerializationDB::deserializeEliasFano(EliasFano& ef, int quantization_bits)
   // Read H
   buffer.resize(H_size, 0);
   readBuffer(&buffer[0], buffer.size());
-  std:cout << "read buffer done!" << std::endl;
+  std::cout << "read buffer done!" << std::endl;
   byteToBoolVector(buffer, ef.H);
-  std:cout << "byteToBoolVector ef.H done!" << std::endl;
+  std::cout << "byteToBoolVector ef.H done!" << std::endl;
   // Trim padding to last 1
   for(int i = ef.H.size() - 1; i > 0; i--)
   {
@@ -98,15 +98,15 @@ void SerializationDB::deserializeEliasFano(EliasFano& ef, int quantization_bits)
       break;
     }
   }
-  std:cout << "first for loop done!" << std::endl;
+  std::cout << "first for loop done!" << std::endl;
 
   // Read L
   buffer.resize(L_size, 0);
   readBuffer(&buffer[0], buffer.size());
-  std:cout << "readBuffer buffer done!" << std::endl;
+  std::cout << "readBuffer buffer done!" << std::endl;
 
   byteToBoolVector(buffer, ef.L);
-  std:cout << "byteToBoolVector ef.L done!" << std::endl;
+  std::cout << "byteToBoolVector ef.L done!" << std::endl;
   // Trim buffer to the right size
   ef.L.resize(cells * ef.l);
 
@@ -115,7 +115,7 @@ void SerializationDB::deserializeEliasFano(EliasFano& ef, int quantization_bits)
   buffer.resize(quant_size, 0);
   readBuffer(&buffer[0], buffer.size());
   byteToBoolVector(buffer, ef.expr.quantile);
-  std:cout << "byteToBoolVector ef.expr.quantile done!" << std::endl;
+  std::cout << "byteToBoolVector ef.expr.quantile done!" << std::endl;
 
 
   // Take care of the byte quantization
@@ -123,9 +123,9 @@ void SerializationDB::deserializeEliasFano(EliasFano& ef, int quantization_bits)
   ef.expr.quantile.resize(quantization_bits * cells);
 
   read(ef.expr.mu);
-  std:cout << "read ef.expr.mu done!" << std::endl;
+  std::cout << "read ef.expr.mu done!" << std::endl;
   read(ef.expr.sigma);
-  std:cout << "read ef.expr.sigma done!" << std::endl;
+  std::cout << "read ef.expr.sigma done!" << std::endl;
 
 }
 
