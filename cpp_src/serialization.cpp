@@ -289,8 +289,11 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
   for (int i = 0; i < index_size; i++)
   {
     EliasFano ef;
+    std::cout << "EliasFano ef done!"<< std::endl;
     deserializeEliasFano(ef, efdb.quantization_bits);
+    std::cout << "deserializeEliasFano done!"<< std::endl;
     efdb.ef_data.push_back(ef);
+    std::cout << "ef_data.push_back done!"<< std::endl;
     if(i==0)
     {std::cout << "read first eliasFano done!"<< std::endl;}
   }
