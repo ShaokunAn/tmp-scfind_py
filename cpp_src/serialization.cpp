@@ -177,14 +177,17 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
 
   // Read the total cells stored in the database
   read(efdb.total_cells);
+  std::cout << "The total cells number: " << efdb.total_cells << std::endl;
 
   // Read the number of bits used for the quantization of the expression level quantiles
 
   read(efdb.quantization_bits);
+  std::cout << "The quantization_bits: " << efdb.quantization_bits << std::endl;
 
 
   int genes_present;
   read(genes_present);
+  std::cout << "Read number of genes:" << genes_present << std::endl;
 
 
   if (not (genes_present > 0) )
@@ -210,11 +213,15 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
     efdb.index[buffer] = EliasFanoDB::GeneContainer();
     // std::cout << "gene" << buffer << std::endl;
     gene_ids.push_back(buffer);
+    if (i==0)
+    {std::cout << "read first gene done!"<< std::endl;}
   }
+  std::cout << "read all genes done!"<< std::endl;
 
 
   int number_of_cells;
   read(number_of_cells);
+  std::cout << "Numbero fo cells: "<< number_of_cells << std::endl;
 
   for (int i = 0; i < number_of_cells; i++)
   {
@@ -223,13 +230,17 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
     CellMeta cell;
     read(cell);
     efdb.cells.insert({cell_id, cell});
+    if(i==0)
+    {std::cout << "read first cell done!"<< std::endl;}
   }
+  std::cout << "read all cells done!"<< std::endl;
 
 
 
   // Read cell type names
   int cell_types_present;
   read(cell_types_present);
+  std::cout << "Number of cell types: " << cell_types_present << std::endl;
 
   if(not(cell_types_present > 0))
   {
@@ -254,11 +265,14 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
     int cell_type_id = efdb.cell_types.size();
     efdb.cell_types[buffer] = cell_type_id;
     efdb.inverse_cell_type.push_back(ct);
-
+    if (i==0)
+    {std::cout << "read first cell type done!"<< std::endl;}
   }
+  std::cout << "read all cell types done!"<< std::endl;
 
   int index_size;
   read(index_size);
+  std::cout << "index size: " << index_size << std::endl;
 
   std::vector<IndexRecord> records;
   for (int i = 0; i < index_size; ++i)
@@ -266,7 +280,10 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
     IndexRecord record;
     read(record);
     records.push_back(record);
+    if (i==0)
+    {std::cout << "read first index done!"<< std::endl;}
   }
+  std::cout << "read whole index done!"<< std::endl;
 
 
   for (int i = 0; i < index_size; i++)
@@ -274,8 +291,10 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
     EliasFano ef;
     deserializeEliasFano(ef, efdb.quantization_bits);
     efdb.ef_data.push_back(ef);
-
+    if(i==0)
+    {std::cout << "read first eliasFano done!"<< std::endl;}
   }
+  std::cout << "read all EliasFano done!"<< std::endl;
 
 
   // Build database
@@ -284,6 +303,7 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
     //std::cerr << r.gene << " " <<r.cell_type << " " << r.index << std::endl;
     efdb.index[gene_ids[r.gene]][r.cell_type] = r.index;
   }
+  std::cout << "Build database done!"<< std::endl;
 
 #ifdef DEBUG
   std::cout << "Total Cells " << this->total_cells << std::endl;
