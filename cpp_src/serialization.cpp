@@ -109,11 +109,14 @@ void SerializationDB::deserializeEliasFano(EliasFano& ef, int quantization_bits)
   std::cout << "byteToBoolVector ef.L done!" << std::endl;
   // Trim buffer to the right size
   ef.L.resize(cells * ef.l);
+  std::cout << "ef.L resize done!" << std::endl;
 
 
   // Read expression values
   buffer.resize(quant_size, 0);
+  std::cout << "buffer.resize(quant_size, 0); done!" << std::endl;
   readBuffer(&buffer[0], buffer.size());
+  std::cout << "readBuffer(&buffer[0], buffer.size()); done!" << std::endl;
   byteToBoolVector(buffer, ef.expr.quantile);
   std::cout << "byteToBoolVector ef.expr.quantile done!" << std::endl;
 
