@@ -136,6 +136,9 @@ void SerializationDB::binarizeEliasFano(const EliasFano& ef)
 {
   // int i = 0;
   int cells = ef.L.size() / ef.l;
+  std::cout << "write ef.L.size() = "<< ef.L.size() << std::endl;
+  std::cout << "write cells = "<< cells << std::endl;
+  std::cout << "write ef.l = "<< ef.l << std::endl;
   write(cells);
   write(ef.l);
   write(ef.idf);
@@ -205,7 +208,7 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
 
   int genes_present;
   read(genes_present);
-  std::cout << "Read number of genes:" << genes_present << std::endl;
+  std::cout << "number of genes:" << genes_present << std::endl;
 
 
   if (not (genes_present > 0) )
@@ -239,7 +242,7 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
 
   int number_of_cells;
   read(number_of_cells);
-  std::cout << "Numbero fo cells: "<< number_of_cells << std::endl;
+  std::cout << "Number of cells: "<< number_of_cells << std::endl;
 
   for (int i = 0; i < number_of_cells; i++)
   {
@@ -356,6 +359,7 @@ void SerializationDB::serialize(const EliasFanoDB& efdb)
 
   // Dump the total amount of cells
   write(efdb.total_cells);
+  std::cout << "write efdb.total_cells=" << efdb.total_cells << std::endl;
   // Dump the quantization bits for storing the expression level of the genes
   write(efdb.quantization_bits);
 
