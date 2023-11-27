@@ -7,6 +7,7 @@ import pickle
 from scipy.sparse import csr_matrix
 from tqdm import tqdm
 from scipy.stats import hypergeom
+import scipy.sparse
 from anndata import AnnData
 from statsmodels.stats.multitest import multipletests
 
@@ -82,6 +83,7 @@ class SCFind:
         non_zero_cell_types = []
         # Get expression data
         exprs = adata.X
+        is_sparse = scipy.sparse.issparse(exprs)
 
         ef = EliasFanoDB()
         qb_set = ef.setQB(qb)
@@ -103,7 +105,10 @@ class SCFind:
 
             cell_type_exp = cell_type_exp.astype(np.float64)
             # Convert python matrix into
-            ef.indexMatrix(new_cell_types[cell_type], cell_type_exp, cell_type_genes)
+            if is_sparse:
+                ef.indexMatrix(new_cell_types[cell_type], cell_type_exp, cell_type_genes)
+            else:
+                ef.indexMatrix_dense(new_cell_types[cell_type], cell_type_exp, cell_type_genes)
 
         self.index = ef
         self.datasets = [dataset_name]
@@ -330,11 +335,21 @@ class SCFind:
         AnnData: 
             Return the sparse expression matrix.
         """
-        values, row_indices, col_indices, n_cells, feature_names = self.index.getCellTypeExpression(cell_type)
-        n_features = len(feature_names)
-        sp_matrix = csr_matrix((values, (row_indices, col_indices)), shape=(n_cells, n_features))
+        if not self.index_exist:
+            raise ValueError("SCFind index is not built. Please build index first by calling \
+            object.buildCellTypeIndex().")
 
-        adata = AnnData(X=sp_matrix)
+        result = self.index.getCellTypeExpression(cell_type)
+
+        if len(result) == 5: # get sparse matrix
+            values, row_indices, col_indices, n_cells, feature_names = result
+            n_features = len(feature_names)
+            sp_matrix = csr_matrix((values, (row_indices, col_indices)), shape=(n_cells, n_features))
+            adata = AnnData(X=sp_matrix)
+        elif len(result) == 2:
+            mat, feature_names = result
+            adata = AnnData(X=mat)
+
         adata.var_names = feature_names
 
         return adata
