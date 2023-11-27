@@ -67,13 +67,7 @@ int EliasFanoDB::loadByteStream(const py::bytes &stream)
   clearDB();
   SerializationDB ser;
 
-  // Convert py::bytes to std::vector<unsigned char>
-  std::string stream_str = stream;
-  py::bytes byte_stream(stream_str);
-//  std::vector<unsigned char> byte_stream(stream_str.begin(), stream_str.end());
-//  py::bytes py_byte_stream(byte_stream.data(), byte_stream.size());
-
-  ser.loadByteStream(byte_stream);
+  ser.loadByteStream(stream);
   ser.deserializeDB(*this);
   return 0;
 }
