@@ -45,6 +45,11 @@ setup(
         'anndata>=0.9.2',
         'setuptools>=68.0.0',
         'tqdm>=4.66.1',
+        'python-Levenshtein>=0.23.0',
+        'h5py>=3.10.0',
+        'gensim>=4.3.2',
+        'fuzzywuzzy>=0.18.0',
+        'rapidfuzz>=3.5.2'
     ],
     ext_modules=[cpp_extension],
 )
