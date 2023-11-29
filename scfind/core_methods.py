@@ -1167,6 +1167,7 @@ class SCFind:
 
     def _case_correct(self,
                       gene_list: Union[str, List[str]],
+                      if_print: bool = True,
                       ) -> List[str]:
         """
         Corrects the gene list to match the genes in index.
@@ -1175,6 +1176,9 @@ class SCFind:
         ----------
         gene_list: str or list of str
             Gene of a list of genes to be corrected.
+
+        if_print: bool, default=True
+            Whether print gene searching information
 
         Returns
         -------
@@ -1198,7 +1202,7 @@ class SCFind:
             misses = [gene for gene in gene_list if gene.lower() not in normalized_db_genes]
 
             if matches:
-                if misses:
+                if misses and if_print:
                     print(f"Ignoring {', '.join(misses)}. Not valid gene name(s).")
                 return list(set(matches))
 
@@ -1296,19 +1300,18 @@ class SCFind:
 
         """
 
-        # Convert the result to a dataframe (equivalent to query.result.as.dataframe in R)
-        df = self._result_to_dataframe(result)  # You'll need to implement the result_to_dataframe function.
+        # Convert the result to a dataframe
+        df = self._result_to_dataframe(result)
 
-        # Aggregate by cell_type (equivalent to the aggregate function in R)
+        # Aggregate by cell_type
         cell_types_df = df.groupby('cell_type').size().reset_index(name='cell_hits')
 
         # Get total_cells for each cell type
-        # Assuming the rest of the code is unchanged
         cell_types_df['total_cells'] = cell_types_df['cell_type'].apply(lambda x: self.index.getCellTypeSupport([x])[0])
 
         query_hits = len(df)
 
-        # Calculate the hypergeometric test p-values (equivalent to the phyper function in R)
+        # Calculate the hypergeometric test p-values
         cell_types_df['pval'] = 1 - hypergeom.cdf(
             cell_types_df['cell_hits'],
             cell_types_df['total_cells'].sum(),
