@@ -14,9 +14,6 @@ import math
 from string import ascii_letters
 
 
-# from gensim.models.word2vec import Word2Vec
-
-
 def read_w2v(path: str) -> KeyedVectors:
     model = KeyedVectors.load_word2vec_format(path, binary=True)
     # Load the model as a binary format
@@ -89,15 +86,15 @@ def read_all_dictionaries(w2v_path: str,
 
     if priority is None:
         if "priority" in dictionaries:
-            priority = dictionaries["priority"].loc[:,'priority'].to_list() + list(set(dictionary2genenames) - set(dictionaries["priority"].loc[:,'priority'].to_list()))
+            priority = dictionaries["priority"].loc[:,'priority'].to_list() + [p for p in dictionary2genenames if p not in dictionaries['priority'].loc[:, "priority"].to_list()]
             print("Dictionaries priority by-default:")
         else:
-            priority = default + list(set(dictionary2genenames) - set(default))
+            priority = default + [p for p in dictionary2genenames if p not in default]
             print("Dictionaries priority is set as:")
     else:
         if isinstance(priority, str):
             priority = [priority]
-        priority = priority + list(set(default) - set(priority))
+        priority = priority + [p for p in default if p not in priority]
         print("Dictionaries priority is customized by user:")
 
     print("\n".join([name for name in priority if name in dictionaries]))
@@ -267,7 +264,7 @@ def dedup_gene(gene_list: dict) -> dict:
     else:
         for i in dup_genes:
             # Find all occurrences of gene_list['genes']
-            occurrences = [idx for idx, gene in enumerate(gene_list['genes']) if gene == i]
+            occurrences = [index for index, gene in enumerate(gene_list['genes']) if re.search(i, gene, re.IGNORECASE)]
 
             if len(occurrences) > 1:
                 kept_gene = gene_list['genes'][occurrences[0]]
@@ -544,7 +541,8 @@ def query2genes(index: SCFind,
             gene_list += raw_genes if raw_genes else []
 
         if not any("_word" in key.lower() or "_mesh" in key.lower() for key in query):
-            results["genes"] = list(set(gene_list))  # remove duplicates
+            seen = set()
+            results["genes"] = [x for x in gene_list if not (x in seen or seen.add(x))]  # remove duplicates
             results = dedup_gene(results)
             return {k: v for k, v in results.items() if v}
 
@@ -573,7 +571,8 @@ def query2genes(index: SCFind,
                 gene_list += raw_genes if len(raw_genes) != 0 else []
 
         if not any(re.search('_word', key) for key in query):
-            results["genes"] = list(set(gene_list))  # remove duplicates
+            seen = set()
+            results["genes"] = [x for x in gene_list if not (x in seen or seen.add(x))]  # remove duplicates
             results = dedup_gene(results)
             return {k: v for k, v in results.items() if v is not None}
 
@@ -700,7 +699,8 @@ def query2genes(index: SCFind,
                 if genes:
                     gene_list.extend(genes)
 
-        results['genes'] = list(set(gene_list))
+        seen = set()
+        results['genes'] = [x for x in gene_list if not (x in seen or seen.add(x))]
         results = dedup_gene(results)
         return {key: val for key, val in results.items() if val}
 
@@ -742,7 +742,7 @@ def query2CellTypes(index: SCFind,
                 optimized_query = gene_list[i]
 
             s = ["*" + item if i == 'or' else item for item in [g for g in gene_list[i] if g not in optimized_query]]
-            gene_list['genes'] = set(gene_list['genes']).difference(s)
+            gene_list['genes'] = [g for g in gene_list['genes'] if g not in s]
             gene_list[i] = optimized_query if optimized_query else gene_list[i]
 
         result['query_optimized'] = gene_list
