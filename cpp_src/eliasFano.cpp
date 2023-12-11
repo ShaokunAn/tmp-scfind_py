@@ -1235,41 +1235,74 @@ py::dict EliasFanoDB::getCellTypeMeta(const std::string &ct_name) const
 }
 
 const arma::sp_mat EliasFanoDB::csr_to_sp_mat(const py::object& csr_obj) {
-  if (!py::isinstance<py::array_t<int>>(csr_obj.attr("indptr")) ||
-      !py::isinstance<py::array_t<int>>(csr_obj.attr("indices")) ||
-      !py::isinstance<py::array_t<double>>(csr_obj.attr("data"))) {
-      throw std::runtime_error("The given object is not a valid CSR matrix.");
-  }
+  if (py::isinstance<py::array_t<int>>(csr_obj.attr("indptr")) &&
+      py::isinstance<py::array_t<int>>(csr_obj.attr("indices")) &&
+      py::isinstance<py::array_t<double>>(csr_obj.attr("data"))) {
+    py::tuple shape = csr_obj.attr("shape").cast<py::tuple>();
+    int nrows = shape[0].cast<int>();
 
-  py::tuple shape = csr_obj.attr("shape").cast<py::tuple>();
-  int nrows = shape[0].cast<int>();
+    // Get csr_matrix data, indices, and indptr
+    py::array_t<int> indptr = csr_obj.attr("indptr").cast<py::array_t<int>>();
+    py::array_t<int> indices = csr_obj.attr("indices").cast<py::array_t<int>>();
+    py::array_t<double> data = csr_obj.attr("data").cast<py::array_t<double>>();
 
-  // Get csr_matrix data, indices, and indptr
-  py::array_t<int> indptr = csr_obj.attr("indptr").cast<py::array_t<int>>();
-  py::array_t<int> indices = csr_obj.attr("indices").cast<py::array_t<int>>();
-  py::array_t<double> data = csr_obj.attr("data").cast<py::array_t<double>>();
+    int* p_indptr = indptr.mutable_data();
+    int* p_indices = indices.mutable_data();
+    double* p_data = data.mutable_data();
 
-  int* p_indptr = indptr.mutable_data();
-  int* p_indices = indices.mutable_data();
-  double* p_data = data.mutable_data();
+    int nnz = data.size();  // number of non-zero elements
 
-  int nnz = data.size();  // number of non-zero elements
+    arma::umat locations(2, nnz);
+    arma::vec values(nnz);
 
-  arma::umat locations(2, nnz);
-  arma::vec values(nnz);
-
-  arma::uword u_nrows = static_cast<arma::uword>(nrows);
-  for (arma::uword k = 0, i = 0; i < u_nrows; ++i) {
-    for (int j = p_indptr[i]; j < p_indptr[i + 1]; ++j) {
-      locations(0, k) = i;               // 行索引
-      locations(1, k) = p_indices[j];    // 列索引
-      values(k) = p_data[j];             // 值
-      ++k;
+    arma::uword u_nrows = static_cast<arma::uword>(nrows);
+    for (arma::uword k = 0, i = 0; i < u_nrows; ++i) {
+      for (int j = p_indptr[i]; j < p_indptr[i + 1]; ++j) {
+        locations(0, k) = i;               // row indices
+        locations(1, k) = p_indices[j];    // column indices
+        values(k) = p_data[j];             // values
+        ++k;
+      }
     }
-  }
-  arma::sp_mat mat(locations, values);
+    arma::sp_mat mat(locations, values);
 
-  return mat;
+    return mat;
+  } else if (py::isinstance<py::array_t<int64_t>>(csr_obj.attr("indptr")) &&
+             py::isinstance<py::array_t<int64_t>>(csr_obj.attr("indices")) &&
+             py::isinstance<py::array_t<double>>(csr_obj.attr("data")))
+  {
+    py::tuple shape = csr_obj.attr("shape").cast<py::tuple>();
+    int64_t nrows = shape[0].cast<int64_t>();
+
+    // Get csr_matrix data, indices, and indptr
+    py::array_t<int64_t> indptr = csr_obj.attr("indptr").cast<py::array_t<int64_t>>();
+    py::array_t<int64_t> indices = csr_obj.attr("indices").cast<py::array_t<int64_t>>();
+    py::array_t<double> data = csr_obj.attr("data").cast<py::array_t<double>>();
+
+    int64_t* p_indptr = indptr.mutable_data();
+    int64_t* p_indices = indices.mutable_data();
+    double* p_data = data.mutable_data();
+
+    int64_t nnz = data.size();  // number of non-zero elements
+
+    arma::umat locations(2, nnz);
+    arma::vec values(nnz);
+
+    arma::uword u_nrows = static_cast<arma::uword>(nrows);
+    for (arma::uword k = 0, i = 0; i < u_nrows; ++i) {
+      for (int64_t j = p_indptr[i]; j < p_indptr[i + 1]; ++j) {
+        locations(0, k) = i;               // row indices
+        locations(1, k) = p_indices[j];    // column indices
+        values(k) = p_data[j];             // values
+        ++k;
+      }
+    }
+    arma::sp_mat mat(locations, values);
+
+    return mat;
+  } else {
+    throw std::runtime_error("The given object is not a valid CSR matrix.");
+  }
 }
 
 
