@@ -82,8 +82,7 @@ class SCFind:
 
         non_zero_cell_types = []
         # Get expression data
-        exprs = adata.X
-        is_sparse = scipy.sparse.issparse(exprs)
+        is_sparse = scipy.sparse.issparse(adata.X)
 
         ef = EliasFanoDB()
         qb_set = ef.setQB(qb)
@@ -96,7 +95,8 @@ class SCFind:
                 continue
             non_zero_cell_types.append(cell_type)
             print(f"\t Indexing {cell_type} as {new_cell_types[cell_type]} with {len(inds_cell)} cells.")
-            cell_type_exp = exprs[inds_cell]
+
+            cell_type_exp = adata.X[inds_cell]
 
             try:
                 cell_type_genes = adata.var[feature_name].tolist()
