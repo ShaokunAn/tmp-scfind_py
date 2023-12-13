@@ -23,6 +23,8 @@ Alternatively, you can download the source files and compile them mannually. See
 git clone https://github.com/ShaokunAn/tmp-scfind_py.git
 cd tmp-scfind_py
 pip install -r requirements.txt
+python setup.py build_ext --inplace
+python setup.py sdist bdist_wheel
 pip install .
 ```
 
