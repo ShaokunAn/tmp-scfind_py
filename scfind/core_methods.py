@@ -559,6 +559,7 @@ class SCFind:
         result = self.findCellTypes(gene_list, datasets)
         if result:
             df = self._phyper_test(result)
+            df = df.sort_values(by='pval', ascending=True)
             if not include_prefix:
                 # Split the 'cell_type' column and keep only the suffix
                 df['cell_type'] = df['cell_type'].str.split('.').str[-1]
