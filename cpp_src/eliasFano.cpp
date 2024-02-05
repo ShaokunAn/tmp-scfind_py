@@ -893,8 +893,8 @@ py::dict EliasFanoDB::findMarkerGenes(const py::list &gene_list, py::list datase
   py::dict result;
   result["Genes"] = py::cast(query_gene_cardinality);
   result["Query"] = py::cast(query);
-  result["tfidf"] = py::cast(query_tfidf);
-  result["Cells"] = py::cast(query_cell_cardinality);
+  result["TF-IDF"] = py::cast(query_tfidf);
+  result["Number of Cells"] = py::cast(query_cell_cardinality);
 
   return result;
 }
