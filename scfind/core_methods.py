@@ -1,15 +1,15 @@
+import pickle
 from typing import List, Optional, Union, Dict
 
-from EliasFanoDB import EliasFanoDB
 import numpy as np
 import pandas as pd
-import pickle
-from scipy.sparse import csr_matrix
-from tqdm import tqdm
-from scipy.stats import hypergeom
 import scipy.sparse
+from EliasFanoDB import EliasFanoDB
 from anndata import AnnData
+from scipy.sparse import csr_matrix
+from scipy.stats import hypergeom
 from statsmodels.stats.multitest import multipletests
+from tqdm import tqdm
 
 
 class SCFind:
@@ -317,7 +317,7 @@ class SCFind:
         except ValueError:
             # Log the error if necessary
             # print(f"Error: {err}")
-            return pd.DataFrame(columns=["Genes", "Query", "tfidf", "Cells"])
+            return pd.DataFrame(columns=["Genes", "Query", "TF-IDF", "Number of Cells"])
 
     def getCellTypeExpression(self,
                               cell_type: str,
@@ -341,7 +341,7 @@ class SCFind:
 
         result = self.index.getCellTypeExpression(cell_type)
 
-        if len(result) == 5: # get sparse matrix
+        if len(result) == 5:  # get sparse matrix
             values, row_indices, col_indices, n_cells, feature_names = result
             n_features = len(feature_names)
             sp_matrix = csr_matrix((values, (row_indices, col_indices)), shape=(n_cells, n_features))
@@ -409,7 +409,8 @@ class SCFind:
             print(f"Column {sort_field} not found")
             sort_field = 'f1'
 
-        all_cell_types = all_cell_types.sort_values(by=[sort_field, 'genes'], ascending=[False, True])
+        all_cell_types = all_cell_types.sort_values(by=[sort_field, 'genes'], ascending=[False, True],
+                                                    ignore_index=True)
         all_cell_types = all_cell_types.head(top_k)
 
         if not include_prefix:
@@ -512,7 +513,7 @@ class SCFind:
             print(f"Column {sort_field} not found")
             sort_field = 'f1'
 
-        all_cell_types = all_cell_types.sort_values(by=sort_field)
+        all_cell_types = all_cell_types.sort_values(by=sort_field, ascending=True, ignore_index=True)
 
         if not include_prefix:
             all_cell_types['cellType'] = all_cell_types['cellType'].str.split(".").str[-1]
@@ -559,7 +560,7 @@ class SCFind:
         result = self.findCellTypes(gene_list, datasets)
         if result:
             df = self._phyper_test(result)
-            df = df.sort_values(by='pval', ascending=True)
+            df = df.sort_values(by='pval', ascending=True, ignore_index=True)
             if not include_prefix:
                 # Split the 'cell_type' column and keep only the suffix
                 df['cell_type'] = df['cell_type'].str.split('.').str[-1]
@@ -761,7 +762,7 @@ class SCFind:
         return self.index.genes()
 
     def findCellTypeSpecificities(self,
-                                  gene_list: Optional[Union[str,List[str]]] = None,
+                                  gene_list: Optional[Union[str, List[str]]] = None,
                                   datasets: Union[str, List[str]] = None,
                                   min_cells: int = 10,
                                   min_fraction: float = 0.25
@@ -837,7 +838,6 @@ class SCFind:
             return df.iloc[:, 1].value_counts().to_dict()
         else:
             return {gene: [0] for gene in gene_list}
-
 
     def findTissueSpecificities(self,
                                 gene_list: Optional[Union[str, List[str]]] = None,
