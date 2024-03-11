@@ -959,7 +959,8 @@ class SCFind:
             house_keeping_genes = list(set(house_keeping_genes).intersection(current_genes))
 
             if not house_keeping_genes:
-                raise ValueError("No house keeping gene is found.")
+                print("No house keeping gene is found.")
+                return []
 
         house_keeping_genes = sorted(house_keeping_genes)
         return house_keeping_genes
