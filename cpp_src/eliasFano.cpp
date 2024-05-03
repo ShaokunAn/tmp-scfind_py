@@ -509,26 +509,54 @@ py::dict EliasFanoDB::geneSupportInCellTypes(const py::list &gene_names, const p
   auto genes = gene_names.cast<std::vector<EliasFanoDB::GeneName>>();
   py::dict results;
 
+  // cluster cell types into same cluster regardless suffix
+  std::unordered_map<std::string, std::vector<std::string>> same_cts;
+  for (const auto &ct : cell_types)
+  {
+    std::vector<std::string> substrings = extractSubstrings(ct);
+    std::string key = getSubstringSetKey(substrings);
+    same_cts[key].push_back(ct);
+  }
+  
+
   for (const auto &g : genes)
   {
     std::map<std::string, int> gene_results;
-    for (auto const &ct : cell_types)
+    for (const auto &entry: same_cts)
     {
-      // Querying cell types
       int size = 0;
-      try
+      for (const auto &ct : entry.second)
       {
-
-        const auto r = this->ef_data.at(this->index.at(g).at(this->cell_types.at(ct)));
-        size = r.getSize();
+        try
+        {
+          const auto r = this->ef_data.at(this->index.at(g).at(this->cell_types.at(ct)));
+          size += r.getSize();
+        }
+        catch(const std::out_of_range& e)
+        {
+          continue;
+        } 
       }
-      catch (const std::out_of_range &e)
-      {
-        continue;
-      }
-
-      gene_results[ct] = size;
+      gene_results[entry.first] = size;
     }
+
+
+    // for (auto const &ct : cell_types)
+    // {
+    //   // Querying cell types
+    //   int size = 0;
+    //   try
+    //   {
+    //     const auto r = this->ef_data.at(this->index.at(g).at(this->cell_types.at(ct)));
+    //     size = r.getSize();
+    //   }
+    //   catch (const std::out_of_range &e)
+    //   {
+    //     continue;
+    //   }
+
+    //   gene_results[ct] = size;
+    // }
     results[py::str(g)] = gene_results;
 
 //    results[g] = gene_results;
@@ -653,6 +681,82 @@ py::list EliasFanoDB::getCellTypeSupport(py::list &cell_types)
   return py::cast(ct_support);
 }
 
+py::list EliasFanoDB::getCellTypeSupport_(py::list &dataset_celltypes)
+{
+  // cluster cell types into same cluster ragardless suffix
+  std::vector<std::string> all_cell_types;
+  all_cell_types.reserve(this->cell_types.size());
+  for (const auto &cit : this->cell_types)
+  {
+    all_cell_types.push_back(cit.first);
+  }
+
+  std::unordered_map<std::string, std::vector<std::string>> same_cts;
+  for (const std::string &ct : all_cell_types)
+  {
+    std::vector<std::string> substrings = extractSubstrings(ct);
+    std::string key = getSubstringSetKey(substrings);
+    same_cts[key].push_back(ct);
+  }
+
+  std::vector<std::string> cts = dataset_celltypes.cast<std::vector<std::string>>();
+  std::vector<int> ct_support;
+  ct_support.reserve(cts.size());
+  for (const std::string &ct : cts)
+  {
+    auto cit  = same_cts.find(ct);
+    if (cit != same_cts.end())
+    {
+      int support = 0;
+      const std::vector<std::string> &cts_same_label = cit->second;
+      for (const auto &ct_same_label : cts_same_label)
+      {
+        auto ct_id = this->cell_types.find(ct_same_label);
+        if (ct_id != this->cell_types.end()){
+          support += this->inverse_cell_type[ct_id->second].total_cells;
+        }else{
+          support += 0;
+        }
+      }
+      ct_support.push_back(support);
+    }else
+    {
+      ct_support.push_back(0);
+    }
+  }
+
+  return py::cast(ct_support);
+
+
+
+
+
+  
+
+
+
+
+
+  // std::vector<std::string> cts = cell_types.cast<std::vector<std::string>>();
+  // std::vector<int> ct_support;
+  // ct_support.reserve(cts.size());
+  // for (auto const &ct : cts)
+  // {
+  //   // TODO(Nikos) fix this, otherwise we will get a nice segfault no error control
+  //   auto cit = this->cell_types.find(ct);
+  //   if (cit != this->cell_types.end())
+  //   {
+  //     ct_support.push_back(this->inverse_cell_type[cit->second].total_cells);
+  //   }
+  //   else
+  //   {
+  //     ct_support.push_back(0);
+  //   }
+  // }
+
+  // return py::cast(ct_support);
+}
+
 py::dict EliasFanoDB::queryGenes(const py::list &gene_names, const py::list &datasets_active) const
 {
   py::dict t;
@@ -757,7 +861,7 @@ py::list EliasFanoDB::getGenesInDB() const
   return py::cast(gene_names);
 }
 
-py::dict EliasFanoDB::findCellTypes(const py::list &gene_names, const py::list &datasets_active) const
+py::dict EliasFanoDB::findCellTypes(const py::list &gene_names, const py::list &datasets_active, bool &is_merge) const
 {
   std::vector<std::string> datasets = datasets_active.cast<std::vector<std::string>>();
   std::vector<CellTypeName> cell_types_bg;
@@ -775,12 +879,12 @@ py::dict EliasFanoDB::findCellTypes(const py::list &gene_names, const py::list &
                           }),
                       cell_types_bg.end());
 
-  return _findCellTypes(gene_names.cast<std::vector<std::string>>(), cell_types_bg);
+  return _findCellTypes(gene_names.cast<std::vector<std::string>>(), cell_types_bg, is_merge);
 }
 
 // TODO(Nikos) REFACTOR
 // And query
-py::dict EliasFanoDB::_findCellTypes(const std::vector<GeneName> &gene_names, const std::vector<EliasFanoDB::CellTypeName> &cell_types_bg) const
+py::dict EliasFanoDB::_findCellTypes(const std::vector<GeneName> &gene_names, const std::vector<EliasFanoDB::CellTypeName> &cell_types_bg, const bool &is_merge) const
 {
 
   // Store the results here
@@ -790,11 +894,11 @@ py::dict EliasFanoDB::_findCellTypes(const std::vector<GeneName> &gene_names, co
   // Remove genes not found in index
   genes.erase(std::remove_if(genes.begin(), genes.end(), [&](const GeneName &g)
                              {
-                                                          auto is_missing = (index.find(g) == index.end());
-                                                          if (is_missing)
-                                                            std::cerr << g << " is ignored, not found in the index"<< std::endl;
-                                                          return is_missing; }),
-              genes.end());
+                              auto is_missing = (index.find(g) == index.end());
+                              if (is_missing)
+                              std::cerr << g << " is ignored, not found in the index"<< std::endl;
+                              return is_missing; }),
+                              genes.end());
 
   // Get Cell types that have all the genes present
   std::vector<CellTypeName> cts = cell_types_bg;
@@ -813,32 +917,97 @@ py::dict EliasFanoDB::_findCellTypes(const std::vector<GeneName> &gene_names, co
             cts.end());
 
   // intersect cells
-  for (auto const &ct : cts)
+  // identify same cell types regarding suffix
+  if (is_merge)
   {
-    auto last_intersection = eliasFanoDecoding(getEntry(*(genes.begin()), ct));
-    std::vector<int> curr_intersection;
-    curr_intersection.reserve(last_intersection.size());
-    for (std::size_t i = 1; i < genes.size(); ++i)
+    std::unordered_map<std::string, std::vector<std::string>> same_cts;
+    for (const std::string& str : cts)
     {
-      std::vector<int> cells = eliasFanoDecoding(getEntry(genes.at(i), ct));
-      std::set_intersection(
-          cells.begin(),
-          cells.end(),
-          last_intersection.begin(),
-          last_intersection.end(),
-          std::back_inserter(curr_intersection));
-      std::swap(last_intersection, curr_intersection);
-      curr_intersection.clear();
-      curr_intersection.reserve(last_intersection.size());
-      if (last_intersection.empty())
-      {
-        break;
-      }
+      std::vector<std::string> substrings = extractSubstrings(str);
+      std::string key = getSubstringSetKey(substrings);
+      same_cts[key].push_back(str);
     }
-    if (not last_intersection.empty())
-      t[py::str(ct)] = py::cast(last_intersection);
+
+    for (const auto &entry : same_cts)
+    {
+      const std::vector<std::string> &cts_same_label = entry.second;
+      std::vector<int> entry_intersection;
+      bool is_first = true;
+
+      for (auto const &ct : cts_same_label)
+      {
+        std::vector<int> last_intersection;
+        for (std::size_t i = 0; i < genes.size(); ++i)
+        {
+          std::vector<int> cells = eliasFanoDecoding(getEntry(genes.at(i), ct));
+          if (i == 0)
+          {
+            last_intersection = cells;
+          }
+          else
+          {
+            std::vector<int> curr_intersection;
+            std::set_intersection(
+              cells.begin(),
+              cells.end(),
+              last_intersection.begin(),
+              last_intersection.end(),
+              std::back_inserter(curr_intersection));
+            last_intersection = std::move(curr_intersection);
+          }
+        }
+
+        if (is_first)
+        {
+          entry_intersection = last_intersection;
+          is_first = false;
+        }
+        else
+        {
+          entry_intersection.insert(
+            entry_intersection.end(),
+            last_intersection.begin(),
+            last_intersection.end()
+          );
+        }
+      }
+
+      if (!entry_intersection.empty())
+        t[py::str(entry.first)] = py::cast(entry_intersection);
+    }
+
+    return t;
+    
+  }else{
+
+    for (auto const &ct : cts)
+      {
+        auto last_intersection = eliasFanoDecoding(getEntry(*(genes.begin()), ct));
+        std::vector<int> curr_intersection;
+        curr_intersection.reserve(last_intersection.size());
+        for (std::size_t i = 1; i < genes.size(); ++i)
+        {
+          std::vector<int> cells = eliasFanoDecoding(getEntry(genes.at(i), ct));
+          std::set_intersection(
+              cells.begin(),
+              cells.end(),
+              last_intersection.begin(),
+              last_intersection.end(),
+              std::back_inserter(curr_intersection));
+          std::swap(last_intersection, curr_intersection);
+          curr_intersection.clear();
+          curr_intersection.reserve(last_intersection.size());
+          if (last_intersection.empty())
+          {
+            break;
+          }
+        }
+        if (not last_intersection.empty())
+          t[py::str(ct)] = py::cast(last_intersection);
+      }
+      return t;
   }
-  return t;
+
 }
 
 // that casts the results into native python data structures
@@ -949,29 +1118,87 @@ py::dict EliasFanoDB::_findCellTypeMarkers(const py::list &cell_types, const py:
 
   std::vector<int> tp, fp, tn, fn;
   std::vector<float> precision, recall, f1;
-  for (auto const &ct : cts)
-  {
-    auto marker_genes = this->_cellTypeScore(ct, bk_cts, gene_set, mode);
-    if (marker_genes.empty())
-    {
-      std::cerr << "Marker genes could not be found for cell type " << ct << std::endl;
-      continue;
+  
+  // Identify dataset.celltype with same biological meanings
+
+  std::unordered_map<std::string, std::vector<std::string>> same_cts;
+  for (const std::string& str : cts) {
+        std::vector<std::string> substrings = extractSubstrings(str);
+        std::string key = getSubstringSetKey(substrings);
+        same_cts[key].push_back(str);
     }
 
-    for (auto &t : marker_genes)
-    {
-      const CellTypeMarker &ctm = t.second;
-      genes.push_back(t.first);
-      df_cell_type.push_back(ct);
-      tp.push_back(ctm.tp);
-      fp.push_back(ctm.fp);
-      tn.push_back(ctm.tn);
-      fn.push_back(ctm.fn);
-      precision.push_back(ctm.precision());
-      recall.push_back(ctm.recall());
-      f1.push_back(ctm.f1());
+  for (const auto &entry : same_cts)
+  {
+    const std::vector<std::string> &cts = entry.second;
+    std::unordered_map<GeneName, std::array<int, 4>> marker_genes_cts;
+    std::vector<std::pair<std::string, CellTypeMarker>> marker_genes_cts_score;
+
+    for (const auto &ct : cts) {
+        auto marker_gene = this->_cellTypeCount(ct, bk_cts, gene_set, mode);
+        
+        for (const auto& t : marker_gene) {
+            marker_genes_cts[t.first][0] = std::get<0>(t.second);
+            marker_genes_cts[t.first][1] = std::get<1>(t.second);
+            marker_genes_cts[t.first][2] += std::get<2>(t.second);
+            marker_genes_cts[t.first][3] += std::get<3>(t.second);
+        }
     }
+
+    for (const auto& t : marker_genes_cts) {
+        int tp_val = t.second[3];
+        int fp_val = t.second[1] - tp_val;
+        int tn_val = t.second[0] - fp_val - t.second[2];
+        int fn_val = t.second[2] - tp_val;
+        
+        if (tp_val == 0)
+        {
+          continue;
+        }
+        
+
+        CellTypeMarker score;
+        score.tp = tp_val;
+        score.tn = tn_val;
+        score.fp = fp_val;
+        score.fn = fn_val;
+
+        genes.push_back(t.first);
+        df_cell_type.push_back(entry.first);
+        tp.push_back(score.tp);
+        fp.push_back(score.fp);
+        tn.push_back(score.tn);
+        fn.push_back(score.fn);
+        precision.push_back(score.precision());
+        recall.push_back(score.recall());
+        f1.push_back(score.f1());
+    }
+
   }
+
+  // for (auto const &ct : cts)
+  // {
+  //   auto marker_genes = this->_cellTypeScore(ct, bk_cts, gene_set, mode);
+  //   if (marker_genes.empty())
+  //   {
+  //     std::cerr << "Marker genes could not be found for cell type " << ct << std::endl;
+  //     continue;
+  //   }
+
+  //   for (auto &t : marker_genes)
+  //   {
+  //     const CellTypeMarker &ctm = t.second;
+  //     genes.push_back(t.first);
+  //     df_cell_type.push_back(ct);
+  //     tp.push_back(ctm.tp);
+  //     fp.push_back(ctm.fp);
+  //     tn.push_back(ctm.tn);
+  //     fn.push_back(ctm.fn);
+  //     precision.push_back(ctm.precision());
+  //     recall.push_back(ctm.recall());
+  //     f1.push_back(ctm.f1());
+  //   }
+  // }
 
   py::dict result;
   result["cellType"] = py::cast(df_cell_type);
@@ -998,6 +1225,79 @@ py::dict EliasFanoDB::evaluateCellTypeMarkers(const py::list &cell_types,
                                                      const py::list &background)
 {
   return _findCellTypeMarkers(cell_types, background, gene_set.cast<std::vector<GeneName>>(), ALL);
+}
+
+std::unordered_map<EliasFanoDB::GeneName, std::tuple<int, int, int, int>> EliasFanoDB::_cellTypeCount(const std::string &cell_type, const std::vector<std::string> &universe, const std::vector<EliasFanoDB::GeneName> &gene_names, int mode) const
+{
+  auto ct_it = this->cell_types.find(cell_type);
+  if (ct_it == this->cell_types.end())
+  {
+    std::cerr << "Cell type " << cell_type << " not found. exiting..." << std::endl;
+    return std::unordered_map<std::string, std::tuple<int, int, int, int>>();
+  }
+
+  const CellTypeID cell_type_id = ct_it->second;
+  int total_cells_in_ct = this->inverse_cell_type[cell_type_id].total_cells;
+  
+  const auto active_cell_types = this->_getValidCellTypes(universe);
+
+  // Calculate background universe total cells
+  const std::deque<CellType> &all_cts = this->inverse_cell_type;
+  const CellTypeIndex &cts_index = this->cell_types;
+  const int act_total_cells = std::accumulate(active_cell_types.begin(),
+                                              active_cell_types.end(),
+                                              0,
+                                              [&all_cts, &cts_index](const int &sum, const CellTypeName &name)
+                                              {
+                                                const auto ct_id = cts_index.find(name);
+                                                return sum + all_cts[ct_id->second].total_cells;
+                                              });
+
+  std::unordered_map<std::string, std::tuple<int, int, int, int>> results;
+
+  if (mode == ALL)
+  {
+    for (auto const &gene_name : gene_names)
+    { 
+      const auto index_it = this->index.find(gene_name);
+      if (index_it == this->index.end())
+      {
+        std::cerr << "Gene " << gene_name << " not found in the database, Ignoring... " << std::endl;
+        continue;
+      }
+
+      const auto &gene_entry = *index_it;
+      int cells_in_ct;
+      // Make sure the cell type is in then batch
+      auto ctm = gene_entry.second.find(cell_type_id);
+      if (ctm == gene_entry.second.end())
+      {
+        cells_in_ct = 0;
+      }else
+      {
+        const EliasFano &ex_vec = this->ef_data[ctm->second];
+        cells_in_ct = ex_vec.getSize();
+      }
+      
+      int gene_bkg_pt = 0;
+
+      for (auto const &ct : gene_entry.second)
+      {
+        auto bct_it = active_cell_types.find(all_cts[ct.first].name);
+        // if we are not interested in the cell type continue
+        if (bct_it == active_cell_types.end())
+        {
+          continue;
+        }
+
+        int bkg_cell_number = this->ef_data[ct.second].getSize();
+        gene_bkg_pt += bkg_cell_number;
+      }
+      results[gene_name] = std::make_tuple(act_total_cells, gene_bkg_pt, total_cells_in_ct, cells_in_ct);
+      
+    }
+  }
+  return results;
 }
 
 std::map<EliasFanoDB::GeneName, CellTypeMarker> EliasFanoDB::_cellTypeScore(const std::string &cell_type, const std::vector<std::string> &universe, const std::vector<EliasFanoDB::GeneName> &gene_names, int mode) const
@@ -1084,7 +1384,7 @@ std::map<EliasFanoDB::GeneName, CellTypeMarker> EliasFanoDB::_cellTypeScore(cons
     auto dit = scores.insert(std::make_pair(imploded.str(), ctm_template));
     CellTypeMarker &gene_ctm_score = dit.first->second;
 
-    py::dict result = this->_findCellTypes(gene_names, std::vector<CellTypeName>(active_cell_types.begin(), active_cell_types.end()));
+    py::dict result = this->_findCellTypes(gene_names, std::vector<CellTypeName>(active_cell_types.begin(), active_cell_types.end()), false);
 
     std::vector<CellTypeName> cell_types;
     for (auto item : result) {
@@ -1335,5 +1635,6 @@ PYBIND11_MODULE(EliasFanoDB, m){
     .def("getCellTypeMeta", &EliasFanoDB::getCellTypeMeta)
     .def("evaluateCellTypeMarkersAND", &EliasFanoDB::evaluateCellTypeMarkersAND)
     .def("evaluateCellTypeMarkers", &EliasFanoDB::evaluateCellTypeMarkers)
+    .def("getCellTypeSupport_", &EliasFanoDB::getCellTypeSupport_)
     .def("getCellTypeSupport", &EliasFanoDB::getCellTypeSupport);
 }

@@ -343,5 +343,53 @@ std::set<Pattern> exhaustiveFrequentItemsetMining(const py::dict& genes_results,
   return results;
 }
 
+std::vector<std::string> splitString(const std::string& str, char delimiter) {
+    std::vector<std::string> parts;
+    size_t start = 0;
+    size_t end = str.find(delimiter);
 
+    while (end != std::string::npos) {
+        parts.push_back(str.substr(start, end - start));
+        start = end + 1;
+        end = str.find(delimiter, start);
+    }
 
+    parts.push_back(str.substr(start));
+
+    return parts;
+}
+
+std::vector<std::string> extractSubstrings(const std::string& str) {
+    std::vector<std::string> substrings;
+    std::vector<std::string> parts = splitString(str, '+');
+
+    for (const std::string& part : parts) {
+        std::vector<std::string> subparts = splitString(part, '@');
+        substrings.emplace_back(subparts[0]);
+    }
+
+    std::vector<std::string> subparts = splitString(parts.back(), '.');
+    substrings.emplace_back(subparts.back());
+
+    return substrings;
+}
+
+std::string getSubstringSetKey(const std::vector<std::string>& substrings) {
+    // std::vector<std::string> sortedSubstrings(substrings.begin(), substrings.end());
+    // std::sort(sortedSubstrings.begin(), sortedSubstrings.end());
+
+    std::string key = "";
+    for (size_t i = 0; i < substrings.size(); ++i) {
+        key += substrings[i];
+        if (i < substrings.size() - 2) {
+            key += "+";  // Add the separator only if it's not the last substring
+        }
+        if (i == substrings.size() - 2)
+        {
+          key += ".";
+        }
+        
+    }
+
+    return key;
+}

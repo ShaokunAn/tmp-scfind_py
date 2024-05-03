@@ -101,6 +101,8 @@ class EliasFanoDB
   CellTypeIndex getCellTypeIDs(const std::set<std::string>& datasets) const;
 
   py::list getCellTypeSupport(py::list& cell_types);
+  
+  py::list getCellTypeSupport_(py::list& cell_types);
 
   py::dict queryGenes(const py::list& gene_names, const py::list& datasets_active) const;
 
@@ -111,8 +113,8 @@ class EliasFanoDB
   size_t dbMemoryFootprint() const;
 
   // And query
-  py::dict findCellTypes(const py::list& gene_names, const py::list& datasets_active) const;
-  py::dict _findCellTypes(const std::vector<std::string>& gene_names, const std::vector<CellTypeName>& cell_types_bg) const;
+  py::dict findCellTypes(const py::list& gene_names, const py::list& datasets_active, bool &is_merge) const;
+  py::dict _findCellTypes(const std::vector<std::string>& gene_names, const std::vector<CellTypeName>& cell_types_bg, const bool &is_merge) const;
 
 
   // TODO(Nikos) this function can be optimized.. It uses the native quering mechanism
@@ -141,6 +143,8 @@ class EliasFanoDB
 
 
   std::map<GeneName, CellTypeMarker> _cellTypeScore(const std::string& cell_type, const std::vector<std::string>& universe, const std::vector <GeneName>&, int mode = ALL) const;
+
+  std::unordered_map<GeneName, std::tuple<int, int, int, int>> _cellTypeCount(const std::string &cell_type, const std::vector<std::string> &universe, const std::vector<GeneName> &gene_names, int mode = ALL) const;
 
   const std::set<std::string> _getValidCellTypes(std::vector<std::string> universe) const;
 

@@ -1,11 +1,17 @@
+from itertools import product
+from multiprocessing import Value
 import pickle
+from turtle import back
 from typing import List, Optional, Union, Dict
+import re
+from collections import defaultdict
 
 import numpy as np
 import pandas as pd
 import scipy.sparse
 from EliasFanoDB import EliasFanoDB
 from anndata import AnnData
+import anndata as ad
 from scipy.sparse import csr_matrix
 from scipy.stats import hypergeom
 from statsmodels.stats.multitest import multipletests
@@ -13,8 +19,18 @@ from tqdm import tqdm
 
 
 class SCFind:
+    """
+    Initialize a SCFind index.
+    
+    Parameters
+    ---------- 
+    annotation_levels: 
+        A list of annotation levels for indexing to indicate the number of categories of labels 
+        used for each cell in index except for cell type label.
 
-    def __init__(self):
+    """
+
+    def __init__(self, annotation_levels: List):
         super().__init__()
 
         self.index = EliasFanoDB()
@@ -22,12 +38,19 @@ class SCFind:
         self.serialized = bytes()
         self.metadata = {}
         self.index_exist = False
+        if isinstance(annotation_levels, list):
+            self.annotation_levels = annotation_levels
+        else:
+            try:
+                self.annotation_levels = list(annotation_levels)
+            except TypeError:
+                raise ValueError("annotation_levels must be a list or an iterable")
 
     def buildCellTypeIndex(self, adata: AnnData,
-                           dataset_name: str,
+                           annotation_names: Dict[str, str],
                            feature_name: str = 'feature_name',
                            cell_type_label: str = 'cell_type',
-                           qb: int = 2
+                           qb: int = 2,
                            ) -> None:
         """
         Build an index for cell types based on the given AnnData data.
@@ -37,7 +60,93 @@ class SCFind:
         adata: AnnData
             The annotated data matrix of shape (n_obs, n_vars). Rows correspond to cells
             and columns to genes.
+        
+        annotation_names: Dict[str, str],
+            A dict of annotations for indexing to set dataset names of index. Keys of the dict mush be consistent 
+            with the 'annotation_levels' when intializing the index. Each value in dict corresponds to one category 
+            of labels, i.e., one column of adata.obs.
 
+        feature_name: str, default='feature_name'
+            The label or key in the AnnData object's variables (var) that corresponds to the feature names.
+
+        cell_type_label: str, default='cell_type'
+            The label or key in the AnnData object's observations (obs) that corresponds to the cell type.
+
+        qb: int, default=2
+            Number of bits per cell that are going to be used for quantile compression of the expression data.
+
+        Returns
+        -------
+        None
+            Updates are made directly to the C++ objects, enhancing search and retrieval operations.
+
+        Raises
+        ------
+        ValueError
+            If dataset_name contains any dots or if assay_name is not found in the AnnData object.
+        """
+
+        # Check if dataset_name contains any dots or plus 
+        # Format annotation names by separating levels with dots and appending an ID suffix using an plus.
+
+        labels_all = [adata.obs[d].astype('category').tolist() for d in annotation_names.values()]
+        if_at_plus = ['@' in d_name or '+' in d_name for d_name in labels_all]
+        if any(if_at_plus):
+            raise ValueError("The labels should not contain any at (@) or plus (+) symbol.\
+                             please replace them with other symbols first.")
+        
+        if set(annotation_names.keys()) != set(self.annotation_levels):
+            raise ValueError(f"The level names ({annotation_names}) do not match predefined level names ({self.annotation_levels})")
+
+        id = len(self.datasets)
+
+        # Find unique combinations of specified annotation levels
+        annotations_set = adata.obs[[name for name in annotation_names.values()]].drop_duplicates()
+
+        # List to store formatted names
+        format_names = []
+
+        # Process each unique combination
+        for index, each_combination in annotations_set.iterrows():
+            # Filter data to get temporary adata with matching observations
+            adata_tmp = adata[adata.obs[list(annotation_names.values())].eq(each_combination).all(axis=1)]
+
+            # Create a formatted name based on the combination
+            format_name = '+'.join([f"{d}@{id}" for d in each_combination])
+            format_names.append(format_name)
+
+            # Initialize a new SCFind object for this specific annotation set
+            index_tmp = SCFind(annotation_levels=self.annotation_levels)
+            index_tmp._buildCellTypeIndex(
+                adata=adata_tmp, 
+                dataset_name=format_name, 
+                feature_name=feature_name, 
+                cell_type_label=cell_type_label, 
+                qb=qb)
+
+            # Merge this new index into the main index
+            self.index.mergeDB(index_tmp.index)
+            
+
+        self.datasets.append(format_names)
+        self.index_exist = True
+
+    
+    def _buildCellTypeIndex(self, adata: AnnData,
+                            dataset_name: str,
+                            feature_name: str = 'feature_name',
+                            cell_type_label: str = 'cell_type',
+                            qb: int = 2,
+                           ) -> None:
+        """
+        Build an index for cell types based on the given AnnData data.
+
+        Parameters
+        ----------
+        adata: AnnData
+            The annotated data matrix of shape (n_obs, n_vars). Rows correspond to cells
+            and columns to genes.
+        
         dataset_name: str
             Name of the dataset.
 
@@ -60,11 +169,6 @@ class SCFind:
         ValueError
             If dataset_name contains any dots or if assay_name is not found in the AnnData object.
         """
-
-        # check if dataset_name contains any dots
-        if '.' in dataset_name:
-            raise ValueError("The dataset name should not contain any dots.")
-
         # Get cell types
         try:
             cell_types_all = adata.obs[cell_type_label].astype('category')
@@ -111,8 +215,9 @@ class SCFind:
                 ef.indexMatrix_dense(new_cell_types[cell_type], cell_type_exp, cell_type_genes)
 
         self.index = ef
-        self.datasets = [dataset_name]
+        # self.datasets = [dataset_name]
         self.index_exist = True
+        
 
     def saveObject(self, file: str) -> None:
         """
@@ -142,7 +247,8 @@ class SCFind:
         # Conver to a dict to store serialized object instead of the EliasFanoDB object
         saved_result = {'serialized': self.serialized,
                         'datasets': self.datasets,
-                        'metadata': self.metadata
+                        'metadata': self.metadata,
+                        'annotation_levels': self.annotation_levels,
                         }
 
         # Save the serialized object to a file
@@ -188,6 +294,7 @@ class SCFind:
         self.serialized = None
         self.index_exist = True
         self.metadata = loaded_object['metadata']
+        self.annotation_levels = loaded_object['annotation_levels']
 
     def mergeDataset(self, new_object: 'SCFind') -> None:
         """
@@ -212,18 +319,21 @@ class SCFind:
         if not self.index_exist:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
+        
+        old_datasets = [d for ds in self.datasets for d in ds]
+        add_datasets = [d for ds in new_object.datasets for d in ds]
 
-        common_datasets = set(self.datasets).intersection(new_object.datasets)
+        common_datasets = set(old_datasets).intersection(add_datasets)
 
-        print(f"Merging {new_object.datasets}")
+        print(f"Merging {add_datasets}")
         if common_datasets:
-            raise Warning("Common dataset names exist, undefined merging behavior, please fix this...")
+            raise ValueError("Common dataset names exist, undefined merging behavior, please fix this...")
 
         self.index.mergeDB(new_object.index)
-        self.datasets.extend([dataset for dataset in new_object.datasets])
+        self.datasets.extend(self.datasets)
 
     def mergeAnnData(self, adata: AnnData,
-                     dataset_name: str,
+                     annotation_names: Dict[str, str],
                      feature_name: str = 'feature_name',
                      cell_type_label: str = 'cell_type1',
                      qb: int = 2
@@ -236,8 +346,10 @@ class SCFind:
         adata: AnnData
             The annotated data matrix of shape (n_obs, n_vars)
 
-        dataset_name: str
-            Name of the dataset that will be prepended in each cell type
+        annotation_names: Dict[str, str],
+            A dict of annotations for indexing to set dataset names of index. Keys of the dict mush be consistent 
+            with the 'annotation_levels' when intializing the index. Each value in dict corresponds to one category 
+            of labels, i.e., one column of adata.obs.
 
         feature_name: str, default='feature_name'
             Name of the feature to be used, typically indicate gene names.
@@ -259,18 +371,51 @@ class SCFind:
         if not self.index_exist:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
+        
+        if set(annotation_names.keys()) != set(self.annotation_levels):
+            raise ValueError(f"The level names ({annotation_names}) do not match predefined level names ({self.annotation_levels})")
 
-        new_object = self._buildCellTypeIndex(adata,
-                                              dataset_name,
-                                              feature_name,
-                                              cell_type_label,
-                                              qb,
-                                              )
-        self.mergeDataset(new_object)
+        labels_all = [adata.obs[d].astype('category').tolist() for d in annotation_names.values()]
+        if_at_plus = ['@' in d_name or '+' in d_name for d_name in labels_all]
+        if any(if_at_plus):
+            raise ValueError("The labels should not contain any at (@) or plus (+) symbol.\
+                             please replace them with other symbols first.")
+
+        id = len(self.datasets)
+
+        # Find unique combinations of specified annotation levels
+        annotations_set = adata.obs[[name for name in annotation_names.values()]].drop_duplicates()
+
+        # List to store formatted names
+        format_names = []
+
+        # Process each unique combination
+        for index, each_combination in annotations_set.iterrows():
+            # Filter data to get temporary adata with matching observations
+            adata_tmp = adata[adata.obs[list(annotation_names.values())].eq(each_combination).all(axis=1)]
+
+            # Create a formatted name based on the combination
+            format_name = '+'.join([f"{d}@{id}" for d in each_combination])
+            format_names.append(format_name)
+
+            # Initialize a new SCFind object for this specific annotation set
+            index_tmp = SCFind(annotation_levels=self.annotation_levels)
+            index_tmp._buildCellTypeIndex(
+                adata=adata_tmp, 
+                dataset_name=format_name, 
+                feature_name=feature_name, 
+                cell_type_label=cell_type_label, 
+                qb=qb)
+
+            # Merge this new index into the main index
+            self.index.mergeDB(index_tmp.index)
+
+        self.datasets.append(format_names)
+
 
     def markerGenes(self,
                     gene_list: Union[str, List[str]],
-                    datasets: Optional[Union[str, List[str]]] = None,
+                    annotation_names: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None,
                     exhaustive: bool = False,
                     support_cutoff: int = -1,
                     ) -> pd.DataFrame:
@@ -282,8 +427,10 @@ class SCFind:
         gene_list: str or list of str,
             Gene or a list of genes existing in the database.
 
-        datasets: str or a list of str, optional (default=None)
-            Dataset or a list of datasets to be searched in. If datasets=None, search all datasets.
+        annotation_names: dict or list of dict, optional (default=None)
+            A list of dictionary indicating the group of interest (value) in each annotation level (key).
+            If it is None, we'll search across all datasets. The format of annotations_names should be like
+            [{"Organ": "organ1", "Tissue": "tissue1"}, {"Organ": "organ1", "Tissue": "tissue2"},].
 
         exhaustive: bool, default=False
             Whether to perform an exhaustive search instead of FP-growth.
@@ -302,8 +449,8 @@ class SCFind:
         if not self.index_exist:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
-
-        datasets = self._select_datasets(datasets)
+            
+        datasets = self._select_datasets(annotation_names=annotation_names)
 
         try:
             results = self.index.findMarkerGenes(
@@ -320,15 +467,22 @@ class SCFind:
             return pd.DataFrame(columns=["Genes", "Query", "TF-IDF", "Number of Cells"])
 
     def getCellTypeExpression(self,
-                              cell_type: str,
+                              cell_types: Optional[Union[str, List[str]]] = None,
+                              annotation_names: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None,
                               ) -> AnnData:
         """
         Retrieve expression matrix of provided cell types.
 
         Parameters
         ----------
-        cell_type: str
-            The cell type for which we want to retrieve the expression data.
+        cell_type: str or list of str
+            The cell types for which we want to retrieve the expression data.
+            If none, use all cell types in selected categories.
+
+        annotation_names: dict or list of dict, optional (default=None)
+            A list of dictionary indicating the group of interest (value) in each annotation level (key).
+            If it is None, we'll search across all datasets. The format of annotations_names should be like
+            [{"Organ": "organ1", "Tissue": "tissue1"}, {"Organ": "organ1", "Tissue": "tissue2"},].
 
         Returns
         -------
@@ -338,25 +492,35 @@ class SCFind:
         if not self.index_exist:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
+        
+        dataset_celltype = self._select_celltype(annotation_names=annotation_names, cell_type=cell_types)
 
-        result = self.index.getCellTypeExpression(cell_type)
+        for i, d_ct in enumerate(dataset_celltype):
+            result = self.index.getCellTypeExpression(d_ct)
+                
+            if len(result) == 5:  # get sparse matrix
+                values, row_indices, col_indices, n_cells, feature_names = result
+                n_features = len(feature_names)
+                sp_matrix = csr_matrix((values, (row_indices, col_indices)), shape=(n_cells, n_features))
+                adata = AnnData(X=sp_matrix)
+            elif len(result) == 2:  # get dense matrix
+                mat, feature_names = result
+                adata = AnnData(X=mat)
+            adata.var_names = feature_names
 
-        if len(result) == 5:  # get sparse matrix
-            values, row_indices, col_indices, n_cells, feature_names = result
-            n_features = len(feature_names)
-            sp_matrix = csr_matrix((values, (row_indices, col_indices)), shape=(n_cells, n_features))
-            adata = AnnData(X=sp_matrix)
-        elif len(result) == 2:
-            mat, feature_names = result
-            adata = AnnData(X=mat)
-
-        adata.var_names = feature_names
-
-        return adata
+            if i == 0:
+                adata_output = adata
+            else:
+                # concatenate retrived expression data for each dataset_cell type of unions of genes 
+                adata_output = ad.concat([adata_output, adata], axis=0, join='outer')
+            
+        return adata_output
 
     def cellTypeMarkers(self,
                         cell_types: Union[str, List[str]],
-                        background_cell_types: Optional[Union[str, List[str]]] = None,
+                        annotation_names: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None,
+                        background_celltypes: Optional[Union[str, List[str]]] = None,
+                        background_annotation_names: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None,
                         top_k: int = 5,
                         sort_field: str = 'f1',
                         include_prefix: bool = True
@@ -369,9 +533,18 @@ class SCFind:
         cell_types: str or list of str
             The cell types for which to extract the marker genes.
 
+        annotation_names: dict or list of dict, optional (default=None)
+            A list of dictionary indicating the group of interest (value) in each annotation level (key).
+            If it is None, we'll search across all datasets. The format of annotations_names should be like
+            [{"Organ": "organ1", "Tissue": "tissue1"}, {"Organ": "organ1", "Tissue": "tissue2"},].
+
         background_cell_types: str or list of str, optional (default=None)
-            The universe of cell types to consider. If not provided,
-            it defaults to all cell types in the SCFind object.
+            The universe of cell types to consider. If not provided, it defaults to all cell types in given
+            'background_annotation_names'.
+
+        background_annotation_names: dict or list of dict, optional (default=None)
+            The universe of categories containing background_cell_types to consider. If not provided, it use 
+            all categories of index by default. Same format as 'annotation_names'.
 
         top_k: int, default=10
             How many genes to retrieve. Defaults to 10.
@@ -392,17 +565,16 @@ class SCFind:
         if not self.index_exist:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
+        
+        dataset_celltype = self._select_celltype(annotation_names=annotation_names, cell_type=cell_types)
 
-        if background_cell_types is None:
-            background_cell_types = self.cellTypeNames()
+        if background_celltypes is None and background_annotation_names is None:
+            print(f"No background categories or cell types are selected. Use all cell types across all categories by default.")
+            background_dataset_celltype = self.cellTypeNames()
+        else:    
+            background_dataset_celltype = self._select_celltype(annotation_names=background_annotation_names, cell_type=background_celltypes)
 
-        if isinstance(background_cell_types, str):
-            background_cell_types = [background_cell_types]
-
-        if isinstance(cell_types, str):
-            cell_types = [cell_types]
-
-        all_cell_types = self.index.cellTypeMarkers(cell_types, background_cell_types)
+        all_cell_types = self.index.cellTypeMarkers(dataset_celltype, background_dataset_celltype)
         all_cell_types = pd.DataFrame(all_cell_types)
 
         if sort_field not in all_cell_types.keys():
@@ -418,21 +590,23 @@ class SCFind:
 
         return all_cell_types
 
-    def cellTypeNames(self, datasets: Optional[Union[str, List[str]]] = None) -> List[str]:
+    def cellTypeNames(self, 
+                      annotation_names: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None
+                     ) -> List[str]:
         """
         Retrieve the names of cell types in datasets from the SCFind object.
 
         Parameters
         ----------
-        datasets: str or list of str, optional (default=None)
-            Dataset names to filter the cell types.
-            If not provided, all cell types from the SCFind object will be returned.
+        annotation_names: dict or list of dict, optional (default=None)
+            A list of dictionary indicating the group of interest (value) in each annotation level (key).
+            If it is None, we'll search across all datasets. The format of annotations_names should be like
+            [{"Organ": "organ1", "Tissue": "tissue1"}, {"Organ": "organ1", "Tissue": "tissue2"},].
 
         Returns
         -------
         List[str]
-            A list of cell type names. If 'datasets' is provided, only the cell types
-            corresponding to the specified datasets will be returned.
+            A list of cell type names. If 'annotation_names' is provided, only the cell types corresponding to the specified catogries will be returned.
         """
 
         if not self.index_exist:
@@ -441,12 +615,10 @@ class SCFind:
 
         all_cell_types = self.index.getCellTypes()
 
-        if datasets is None:
+        if annotation_names is None:
             return all_cell_types
         else:
-            if isinstance(datasets, str):
-                datasets = [datasets]
-
+            datasets = self._select_datasets(annotation_names=annotation_names)
             filtered_cell_types = [cell_type for cell_type in all_cell_types
                                    if cell_type.split('.')[0] in datasets]
             return filtered_cell_types
@@ -454,7 +626,9 @@ class SCFind:
     def evaluateMarkers(self,
                         gene_list: Union[str, List[str]],
                         cell_types: Union[str, List[str]],
+                        annotation_names: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None,
                         background_cell_types: Optional[Union[str, List[str]]] = None,
+                        background_annotation_names: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None,
                         sort_field: str = 'f1',
                         include_prefix: bool = True
                         ) -> pd.DataFrame:
@@ -470,11 +644,20 @@ class SCFind:
             Genes to be evaluated.
 
         cell_types: str or list of str
-            Cell types to be evaluated.
+            The cell types for which to evaluate the marker genes.
+
+        annotation_names: dict or list of dict, optional (default=None)
+            A list of dictionary indicating the group of interest (value) in each annotation level (key).
+            If it is None, we'll search across all datasets. The format of annotations_names should be like
+            [{"Organ": "organ1", "Tissue": "tissue1"}, {"Organ": "organ1", "Tissue": "tissue2"},].
 
         background_cell_types: str or list of str, optional (default=None)
-            The universe of cell types to consider. If not provided, all cell types
-            from the SCFind object will be considered.
+            The universe of cell types to consider. If not provided, it defaults to all cell types in given
+            'background_annotation_names'.
+
+        background_annotation_names: dict or list of dict, optional (default=None)
+            The universe of categories containing background_cell_types to consider. If not provided, it use 
+            all categories of index by default. Same format as 'annotation_names'.
 
         sort_field: str, default='f1'
             The DataFrame will be sorted according to this field.
@@ -492,20 +675,19 @@ class SCFind:
         if not self.index_exist:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
-
-        if background_cell_types is None:
-            print("Considering the whole database.")
-            background_cell_types = self.cellTypeNames()
-        if isinstance(background_cell_types, str):
-            background_cell_types = [background_cell_types]
-
-        if isinstance(cell_types, str):
-            cell_types = [cell_types]
+        
+        
+        dataset_celltype = self._select_celltype(annotation_names=annotation_names, cell_type=cell_types)
+        if background_annotation_names is None and background_cell_types is None:
+            background_dataset_celltype = self.cellTypeNames()
+        else:
+            background_dataset_celltype = self._select_celltype(annotation_names=background_annotation_names, cell_type=background_cell_types)
+        
 
         all_cell_types = self.index.evaluateCellTypeMarkers(
-            cell_types,
+            dataset_celltype,
             self._case_correct(gene_list),
-            background_cell_types,
+            background_dataset_celltype,
         )
         all_cell_types = pd.DataFrame(all_cell_types)
 
@@ -513,7 +695,7 @@ class SCFind:
             print(f"Column {sort_field} not found")
             sort_field = 'f1'
 
-        all_cell_types = all_cell_types.sort_values(by=sort_field, ascending=True, ignore_index=True)
+        all_cell_types = all_cell_types.sort_values(by=sort_field, ascending=False, ignore_index=True)
 
         if not include_prefix:
             all_cell_types['cellType'] = all_cell_types['cellType'].str.split(".").str[-1]
@@ -522,7 +704,7 @@ class SCFind:
 
     def hyperQueryCellTypes(self,
                             gene_list: Union[str, List[str]],
-                            datasets: Optional[Union[str, List[str]]] = None,
+                            annotation_names: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None,
                             include_prefix: bool = True
                             ) -> pd.DataFrame:
         """
@@ -538,9 +720,10 @@ class SCFind:
             "-gene" to exclude "gene", "*gene" if either "gene" is epxressed,
             "*-gene" if either gene is expressed to be excluded.
 
-        datasets: str or list of str, optional (default=None)
-            The datasets vector that will be tested as background for the hypergeometric test.
-            If datasets=None, use all datasets as background.
+        annotation_names: dict or list of dict, optional (default=None)
+            A list of dictionary indicating the group of interest (value) in each annotation level (key).
+            If it is None, we'll search across all datasets. The format of annotations_names should be like
+            [{"Organ": "organ1", "Tissue": "tissue1"}, {"Organ": "organ1", "Tissue": "tissue2"},].
 
         include_prefix: bool, default=True
             If True, include the dataset name as prefix in the cell_type.
@@ -557,10 +740,11 @@ class SCFind:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
 
-        result = self.findCellTypes(gene_list, datasets)
+        result = self.findCellTypes(gene_list, annotation_names=annotation_names, is_merge=True)
         if result:
             df = self._phyper_test(result)
             df = df.sort_values(by='pval', ascending=True, ignore_index=True)
+            df = df[df['pval']<0.05]
             if not include_prefix:
                 # Split the 'cell_type' column and keep only the suffix
                 df['cell_type'] = df['cell_type'].str.split('.').str[-1]
@@ -572,7 +756,8 @@ class SCFind:
 
     def findCellTypes(self,
                       gene_list: Union[str, List[str]],
-                      datasets: Optional[Union[str, List[str]]] = None
+                      annotation_names: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None,
+                      is_merge: bool = False,
                       ) -> Dict[str, List[int]]:
         """
         Find cell types and the cells associated with given gene_list.
@@ -585,10 +770,14 @@ class SCFind:
             "-gene" to exclude "gene", "*gene" if either "gene" is expressed,
             "*-gene" if either gene is expressed to be excluded.
 
-        datasets: str or list of str, optional (default=None)
-            The datasets that will be considered. If datasets=None, all datasets
-            from the SCFind object will be considered.
+        annotation_names: dict or list of dict, optional (default=None)
+            A list of dictionary indicating the group of interest (value) in each annotation level (key).
+            If it is None, we'll search across all datasets. The format of annotations_names should be like
+            [{"Organ": "organ1", "Tissue": "tissue1"}, {"Organ": "organ1", "Tissue": "tissue2"},].
 
+        is_merge: 
+            Boolean value indicating whether to merge dataset_celltypes into same biological groups regardless of suffix.
+            Defaults False to return ids for each dataset_celltypes. 
         Returns
         -------
         Dict[str, List[int]]
@@ -598,11 +787,8 @@ class SCFind:
         if not self.index_exist:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
-
-        if datasets is None:
-            datasets = self.datasets
-        else:
-            datasets = self._select_datasets(datasets)
+        
+        datasets = self._select_datasets(annotation_names=annotation_names)
 
         if isinstance(gene_list, str):
             gene_list = [gene_list]
@@ -611,7 +797,7 @@ class SCFind:
         if len(regular_genes) == 0:
             sanitized_genes = self._case_correct(gene_list)
             if all(isinstance(gene, str) for gene in sanitized_genes):
-                cts = self.index.findCellTypes(sanitized_genes, datasets)
+                cts = self.index.findCellTypes(sanitized_genes, datasets, is_merge)
                 # in python, index starts at 0
                 cts = {key: [cell_id - 1 for cell_id in value] for key, value in cts.items()}
                 return cts
@@ -657,13 +843,13 @@ class SCFind:
             cell_to_id = []
             if len(pos_genes) == 0 and len(or_genes) == 0 and (len(excl_genes) != 0 or len(excl_or_genes) != 0):
                 cell_to_id = {name: list(range(len(cells))) for name, cells in
-                              self.index.getCellTypeSupport(self.cellTypeNames(datasets)).items()}
+                              self.index.getCellTypeSupport(self.cellTypeNames(annotation_names=annotation_names)).items()}
                 cell_to_id = SCFind._pair_id(cell_to_id)
 
             if len(or_genes) != 0:
                 gene_or = []
                 for i in range(len(or_genes)):
-                    tmp_id = SCFind._pair_id(self.index.findCellTypes(pos_genes + [or_genes[i]], datasets))
+                    tmp_id = SCFind._pair_id(self.index.findCellTypes(pos_genes + [or_genes[i]], datasets, is_merge))
 
                     if len(pos_genes) != 0 and tmp_id is not None:
                         print(f"Found {len(tmp_id)} {'cells' if len(tmp_id) > 1 else 'cell'} co-expressing "
@@ -680,7 +866,7 @@ class SCFind:
                         f"{' or '.join(gene_or)}")
             else:
                 if len(pos_genes) != 0:
-                    cell_to_id = SCFind._pair_id(self.index.findCellTypes(pos_genes, datasets))
+                    cell_to_id = SCFind._pair_id(self.index.findCellTypes(pos_genes, datasets, is_merge))
                     print(
                         f"Found {len(cell_to_id)} {'cells co-expressing' if len(pos_genes) > 1 else 'cell expressing'} "
                         f" {' and '.join(pos_genes)}")
@@ -691,7 +877,7 @@ class SCFind:
             if len(excl_or_genes) != 0:
                 # Negative select cell in OR condition
                 for i in range(len(excl_or_genes)):
-                    ex_tmp_id = SCFind._pair_id(self.index.findCellTypes(excl_genes + [excl_or_genes[i]], datasets))
+                    ex_tmp_id = SCFind._pair_id(self.index.findCellTypes(excl_genes + [excl_or_genes[i]], datasets, is_merge))
 
                     num_excluded = sum(item in ex_tmp_id for item in cell_to_id)
                     excl_message = f"Excluded {num_excluded} {'cells' if num_excluded > 1 else 'cell'}"
@@ -717,7 +903,7 @@ class SCFind:
                 if len(excl_genes) != 0:
                     # Negative selection
                     cell_to_id = list(
-                        set(cell_to_id) - set(SCFind._pair_id(self.index.findCellTypes(excl_genes, datasets))))
+                        set(cell_to_id) - set(SCFind._pair_id(self.index.findCellTypes(excl_genes, datasets, is_merge))))
                     count_cell -= len(cell_to_id)
                     if count_cell > 0:
                         excl_message = (
@@ -763,7 +949,7 @@ class SCFind:
 
     def findCellTypeSpecificities(self,
                                   gene_list: Optional[Union[str, List[str]]] = None,
-                                  datasets: Union[str, List[str]] = None,
+                                  annotation_names: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None,
                                   min_cells: int = 10,
                                   min_fraction: float = 0.25
                                   ) -> Dict[str, List[int]]:
@@ -776,8 +962,10 @@ class SCFind:
         gene_list: str or list of str, optional (default=None)
             Genes to be searched in the gene.index. If gene_list=None, use all genes.
 
-        datasets: str or list of str, default=None
-            The datasets that will be searched in.
+        annotation_names: dict or list of dict, optional (default=None)
+            A list of dictionary indicating the group of interest (value) in each annotation level (key).
+            If it is None, we'll search across all datasets. The format of annotations_names should be like
+            [{"Organ": "organ1", "Tissue": "tissue1"}, {"Organ": "organ1", "Tissue": "tissue2"},].
 
         min_cells: int, default 10
             Threshold of cell hit of a cell type.
@@ -805,7 +993,7 @@ class SCFind:
 
         print("Calculating cell-types for each gene...")
 
-        datasets = self.datasets if datasets is None else self._select_datasets(datasets)
+        datasets = self._select_datasets(annotation_names=annotation_names)
 
         if gene_list is None:
             res = self.index.geneSupportInCellTypes(self.index.genes(), datasets)
@@ -829,7 +1017,7 @@ class SCFind:
         df = pd.concat([res_df, res_tissue_df], axis=1)
 
         df.iloc[:, 0] = df.iloc[:, 3].str.replace(r'^[^.]+\.', '', regex=True).apply(
-            lambda x: self.index.getCellTypeSupport([x])[0] * min_fraction)
+            lambda x: self.index.getCellTypeSupport_([x])[0] * min_fraction)
 
         df.loc[df.iloc[:, 0] < min_cells, df.columns[0]] = min_cells
 
@@ -863,16 +1051,18 @@ class SCFind:
         if not self.index_exist:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
+        
+        datasets = self._select_datasets()
 
-        if len(self.datasets) <= 1:
+        if len(datasets) <= 1:
             raise ValueError("Index contains 1 dataset only. No need to detect genes in tissues (datasets).")
         print("Calculating tissues for each gene...")
 
         if gene_list is None:
-            res = self.index.geneSupportInCellTypes(self.index.genes(), self.datasets)
+            res = self.index.geneSupportInCellTypes(self.index.genes(), datasets)
         else:
             gene_list = self._case_correct(gene_list)
-            res = self.index.geneSupportInCellTypes(gene_list, self.datasets)
+            res = self.index.geneSupportInCellTypes(gene_list, datasets)
 
         if not res:
             return {gene: 0 for gene in gene_list}
@@ -903,6 +1093,7 @@ class SCFind:
 
     def findHouseKeepingGenes(self,
                               cell_types: List[str],
+                              annotation_names: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None,
                               min_recall: float = 0.5,
                               max_genes: int = 1000
                               ) -> List[str]:
@@ -913,6 +1104,11 @@ class SCFind:
         ----------
         cell_types: list of str
             A list of cell types to be evaluated.
+
+        annotation_names: dict or list of dict, optional (default=None)
+            A list of dictionary indicating the group of interest (value) in each annotation level (key).
+            If it is None, we'll search across all datasets. The format of annotations_names should be like
+            [{"Organ": "organ1", "Tissue": "tissue1"}, {"Organ": "organ1", "Tissue": "tissue2"},].
 
         min_recall: float, default=0.5
             Threshold of minimum recall value. Defaults to 0.5.
@@ -938,9 +1134,6 @@ class SCFind:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
 
-        if len(cell_types) < 2:
-            raise ValueError("Should input more than 2 cell types to identify housekeeping genes.")
-
         if not (0 < min_recall < 1):
             raise ValueError("min_recall reached limit, please use values > 0 and < 1.0.")
 
@@ -948,13 +1141,45 @@ class SCFind:
             raise ValueError(f"max.genes exceeded limit, please use values > 0 and < {len(self.index.genes())}")
 
         print("Searching for house keeping genes...")
+        dataset_celltype = self._select_celltype(annotation_names=annotation_names, cell_type=cell_types)
 
-        df = self.cellTypeMarkers(cell_types[0], top_k=max_genes, sort_field="recall")
+        if len(dataset_celltype) < 2:
+            raise ValueError("Should input more than 2 cell types to identify housekeeping genes.")
+        
+        background_dataset_celltype = self.cellTypeNames()
+
+        # Create a defaultdict to group strings by their transformed versions
+        grouped_dict = defaultdict(list)
+
+        for s in dataset_celltype:
+            transformed = self._transform_string(s)
+            grouped_dict[transformed].append(s)
+        grouped_list = [d_ct for d_ct in grouped_dict.values() if len(d_ct)!=0]
+
+        # Identify marker genes for each dataset.celltype regardless suffix
+        first_d_cts = grouped_list[0]
+        df = self.index.cellTypeMarkers(first_d_cts, background_dataset_celltype)
+        df = pd.DataFrame(df)
+        sort_field = "recall"
+        if sort_field not in df.keys():
+            print(f"Column {sort_field} not found. Use f1 score instead.")
+            sort_field = "f1"
+        df = df.sort_values(by=[sort_field, 'genes'], ascending=[False, True], ignore_index=True)
+        df = df.head(max_genes)
+
         house_keeping_genes = df['genes'][df['recall'] > min_recall].tolist()
         house_keeping_genes = sorted(house_keeping_genes)
 
-        for i, cell_type in tqdm(enumerate(cell_types[1:], 1)):
-            df = self.cellTypeMarkers(cell_type, top_k=max_genes, sort_field="recall")
+        for i, cell_type in tqdm(enumerate(grouped_list[1:], 1)):
+            df = self.index.cellTypeMarkers(cell_type, background_dataset_celltype)
+            df = pd.DataFrame(df)
+            sort_field = "recall"
+            if sort_field not in df.keys():
+                print(f"Column {sort_field} not found. Use f1 score instead.")
+                sort_field = "f1"
+            df = df.sort_values(by=[sort_field, 'genes'], ascending=[False, True], ignore_index=True)
+            df = df.head(max_genes)
+
             current_genes = df['genes'][df['recall'] > min_recall].tolist()
             house_keeping_genes = list(set(house_keeping_genes).intersection(current_genes))
 
@@ -967,6 +1192,7 @@ class SCFind:
 
     def findGeneSignatures(self,
                            cell_types: Optional[Union[str, List[str]]] = None,
+                           annotation_names: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None,
                            max_genes: int = 1000,
                            min_cells: int = 10,
                            max_pval: float = 0
@@ -979,6 +1205,11 @@ class SCFind:
         cell_types: str or list of str, optional (default=None)
             Cell types to be evaluated.
             If not provided, all cell types from the index will be used.
+
+        annotation_names: dict or list of dict, optional (default=None)
+            A list of dictionary indicating the group of interest (value) in each annotation level (key).
+            If it is None, we'll search across all datasets. The format of annotations_names should be like
+            [{"Organ": "organ1", "Tissue": "tissue1"}, {"Organ": "organ1", "Tissue": "tissue2"},].
 
         max_genes: int, default=1000
             Threshold of number of genes to be considered for each cell type. Defaults to 1000.
@@ -1001,25 +1232,26 @@ class SCFind:
                              "object.buildCellTypeIndex().")
 
         print("Searching for gene signatures...")
-
-        if cell_types is None:
-            cell_types_all = self.index.getCellTypes()
-        else:
-            if isinstance(cell_types, str):
-                cell_types = [cell_types]
-
-            cell_types_all = [cell_type for cell_type in self.cellTypeNames() if
-                              cell_type.lower() in map(str.lower, cell_types)]
+        
+        dataset_celltype = self._select_celltype(annotation_names=annotation_names, cell_type=cell_types)
 
         signatures = {}
 
         try:
-            if not cell_types_all:
+            if len(dataset_celltype) == 0:
                 raise ValueError(f"Ignored {', '.join(cell_types)}. Cell type not found in index.")
+            
+            grouped_dict = defaultdict(list)
 
-            for cell_type in tqdm(cell_types_all, total=len(cell_types_all), desc="Processing cell types"):
-                signatures[cell_type] = self._find_signature(cell_type, max_genes=max_genes, min_cells=min_cells,
-                                                             max_pval=max_pval)
+            for s in dataset_celltype:
+                transformed = self._transform_string(s)
+                grouped_dict[transformed].append(s)
+            grouped_list = [d_ct for d_ct in grouped_dict.values() if len(d_ct)!=0]
+            print('ready to loop')
+
+            for d_ct_name, d_cts in tqdm(grouped_dict.items(), total=len(grouped_list), desc="Processing cell types"):
+                signatures[d_ct_name] = self._find_signature(d_cts, max_genes=max_genes, min_cells=min_cells,
+                                                              max_pval=max_pval)
             return signatures
 
         except ValueError as e:
@@ -1027,7 +1259,7 @@ class SCFind:
 
     def findSimilarGenes(self,
                          gene_list: Union[str, List[str]],
-                         datasets: Optional[Union[str, List[str]]] = None,
+                         annotation_names: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None,
                          top_k: int = 5
                          ) -> pd.DataFrame:
         """
@@ -1039,9 +1271,10 @@ class SCFind:
         gene_list : str or list of str
             Genes to be searched in the gene index.
 
-        datasets : str or list of str, optional (default=None)
-            The datasets that will be searched in.
-            If datasets=None, all datasets from the index will be used.
+        annotation_names: dict or list of dict, optional (default=None)
+            A list of dictionary indicating the group of interest (value) in each annotation level (key).
+            If it is None, we'll search across all datasets. The format of annotations_names should be like
+            [{"Organ": "organ1", "Tissue": "tissue1"}, {"Organ": "organ1", "Tissue": "tissue2"},].
 
         top_k : int, default=5
             How many genes to retrieve.
@@ -1062,12 +1295,9 @@ class SCFind:
 
         print("Searching for genes with similar pattern...")
 
-        if not datasets:
-            datasets = self.datasets
-        else:
-            datasets = self._select_datasets(datasets)
+        # datasets = self._select_datasets(annotation_names=annotation_names)
 
-        e = self.findCellTypes(gene_list, datasets)
+        e = self.findCellTypes(gene_list, annotation_names=annotation_names, is_merge=False)
         n_e = sum(len(sublist) for sublist in e.values())
 
         if n_e > 0:
@@ -1077,7 +1307,7 @@ class SCFind:
             ms = [0] * len(gene_names)
 
             for i, gene_name in enumerate(tqdm(gene_names, desc="Processing genes", total=len(gene_names))):
-                f = self.findCellTypes([gene_name], datasets)
+                f = self.findCellTypes([gene_name], annotation_names=annotation_names, is_merge=False)
                 if f:
                     m = [len(set(e[name]) & set(f.get(name, []))) for name in e.keys()]
                     n_f = sum(len(sublist) for sublist in f.values())
@@ -1099,52 +1329,18 @@ class SCFind:
             print(f"Cannot find cell expressing {', '.join(gene_list)} in the index.")
             return pd.DataFrame()
 
-    @staticmethod
-    def _buildCellTypeIndex(self,
-                            adata: AnnData,
-                            dataset_name: str,
-                            feature_name: str = 'feature_name',
-                            cell_type_label: str = 'cell_type',
-                            qb: int = 2,
-                            ) -> 'SCFind':
-        """
-        Build a SCFind index.
-
-        Parameters
-        ----------
-        adata: AnnData
-            The annotated data matrix of shape (n_obs, n_vars). Rows correspond to cells
-            and columns to genes.
-
-        dataset_name: str
-            Name of the dataset.
-
-        feature_name: str, default='feature_name'
-            The label or key in the AnnData object's variables (var) that corresponds to the feature names.
-
-        cell_type_label: str, default='cell_type'
-            The label or key in the AnnData object's observations (obs) that corresponds to the cell type.
-
-        qb: int, default=2
-            Number of bits per cell that are going to be used for quantile compression of the expression data.
-
-        Returns
-        -------
-        A SCFind object.
-        """
-        scf_object = SCFind()
-        scf_object.buildCellTypeIndex(adata, dataset_name, feature_name, cell_type_label, qb)
-        return scf_object
-
     def _select_datasets(self,
-                         datasets: Optional[Union[str, List[str]]] = None) -> List[str]:
+                         annotation_names: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None
+                        ) -> List[str]:
         """
         Validates and selects datasets for further operations.
 
         Parameters
         ----------
-        datasets: string or list of strings, optional
-            A dataset or a list of datasets to validate against the available datasets in the class.
+        annotation_names: dict or list of dict, optional (default=None)
+            A list of dictionary indicating the group of interest (value) in each annotation level (key).
+            If it is None, search across all datasets. The format of annotations_names should be like
+            [{"Organ": "organ1", "Tissue": "tissue1"}, {"Organ": "organ1", "Tissue": "tissue2"},]            
             If none, all available datasets are selected.
 
         Returns
@@ -1156,16 +1352,57 @@ class SCFind:
         Exception:
             If any of the specified datasets do not exist in the available datasets list.
         """
-        if datasets is None:
-            return self.datasets
-        elif isinstance(datasets, str):
-            datasets = [datasets]
+        datasets_flatten = [d for ds in self.datasets for d in ds]
+        if annotation_names is None:
+            return datasets_flatten
+        elif isinstance(annotation_names, dict):
+            annotation_names = [annotation_names]
+        elif isinstance(annotation_names, list):
+            annotation_names = annotation_names
+        else:
+            raise ValueError("The input of annotation_names should be a list of dict like [{'Organ': 'organ1', 'Tissue': 'tissue1'}].")
+        
+        dataset_components = [component.split('+') for component in datasets_flatten]
+        all_datasets_formatted = [[component.split('@')[0] for component in dataset] for dataset in dataset_components]
+        input_datasets_formatted = [list(dataset.values()) for dataset in annotation_names]
+        match_datasets_id = [i for i, d in enumerate(all_datasets_formatted) for d_input in input_datasets_formatted if set(d_input).issubset(set(d))]
+        if len(match_datasets_id) == 0:
+            raise ValueError("No matched datasets are found! Please double check the input names.")
 
-        missing_datasets = set(datasets).difference(self.datasets)
-        if missing_datasets:
-            raise Exception(f"Dataset(s) {', '.join(missing_datasets)} do not exist in the database.")
+        match_datasets_name = [datasets_flatten[i] for i in match_datasets_id]
+        return match_datasets_name
 
-        return datasets
+
+    def _select_celltype(self, 
+                         annotation_names: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None,
+                         cell_type: Optional[Union[str, List[str]]] = None,
+        ) -> List[str]:
+
+        if annotation_names is None and cell_type is None:
+            raise ValueError("Must select at least one category or one cell type. They cannot be empty at the same time.")
+
+        if cell_type is None:
+            print(f"No cell types are selected, all cell types in {list(annotation_names.values())} will be used by default.")
+            dataset_celltype = self.cellTypeNames(annotation_names=annotation_names)
+        
+        if annotation_names is None:
+            print(f"No categories are selected, all categories will be used by default.")
+            cell_type = [cell_type] if isinstance(cell_type, str) else cell_type
+
+            dataset = self._select_datasets(annotation_names=None)
+            all_dataset_celltype = self.index.getCellTypes()
+            dataset_celltype = [d_ct for d_ct in all_dataset_celltype if d_ct.split('.')[1] in cell_type]
+        
+        if annotation_names and cell_type:
+            cell_type = [cell_type] if isinstance(cell_type, str) else cell_type
+            dataset = self._select_datasets(annotation_names=annotation_names)
+            all_dataset_celltype = self.index.getCellTypes()
+            dataset_celltype = [d_ct for d_ct in all_dataset_celltype if d_ct.split('.')[0] in dataset and d_ct.split('.')[1] in cell_type]
+
+        if len(dataset_celltype) == 0:
+            raise ValueError(f"Couldn't find cell type {cell_type} in {list(annotation_names.values())}.\
+                             Please double check the cell types in given annotation_names by index.cellTypeNames(annotation_names).")
+        return dataset_celltype
 
     def _case_correct(self,
                       gene_list: Union[str, List[str]],
@@ -1234,7 +1471,7 @@ class SCFind:
         return [f"{key}#{value}" for key, value in pair_vec]
 
     def _find_signature(self,
-                        cell_type: str,
+                        cell_type: List[str],
                         max_genes: int = 1000,
                         min_cells: int = 10,
                         max_pval: float = 0
@@ -1263,17 +1500,33 @@ class SCFind:
         A list of genes.
         """
 
-        df = self.cellTypeMarkers([cell_type], top_k=max_genes, sort_field="recall")
+        background_dataset_celltype = self.cellTypeNames()
+        cell_type_name = [re.sub(r'@\d+', '', ct) for ct in cell_type]
+        if len(set(cell_type_name))>1:
+            raise ValueError(f"Input cell type {cell_type} doesn't belong to same biological cell type.")
+        cell_type_name = cell_type_name[0]
+        df = self.index.cellTypeMarkers(cell_type, background_dataset_celltype)
+        df = pd.DataFrame(df)
+        sort_field = "recall"
+        if sort_field not in df.keys():
+            print(f"Column {sort_field} not found. Use f1 score instead.")
+            sort_field = "f1"
+        df = df.sort_values(by=[sort_field, 'genes'], ascending=[False, True], ignore_index=True)
+        df = df.head(max_genes)        
+
         genes = [str(gene) for gene in df['genes']]
         genes_list = []
-        thres = max(min_cells, self.index.getCellTypeMeta(cell_type)['total_cells'])
+        size = 0
+        for ct in cell_type:
+            size += self.index.getCellTypeMeta(ct)['total_cells']
+        thres = max(min_cells, size)
 
         for j in range(len(df)):
 
             res = self.hyperQueryCellTypes(genes_list + [genes[j]])
 
             if not res.empty:
-                ind = res['cell_type'] == cell_type
+                ind = res['cell_type'] == cell_type_name
 
                 if not ind.any():
                     break
@@ -1309,7 +1562,8 @@ class SCFind:
         cell_types_df = df.groupby('cell_type').size().reset_index(name='cell_hits')
 
         # Get total_cells for each cell type
-        cell_types_df['total_cells'] = cell_types_df['cell_type'].apply(lambda x: self.index.getCellTypeSupport([x])[0])
+        
+        cell_types_df['total_cells'] = cell_types_df['cell_type'].apply(lambda x: self.index.getCellTypeSupport_([x])[0])
 
         query_hits = len(df)
 
@@ -1370,3 +1624,10 @@ class SCFind:
                 cell_id.extend(values)
 
             return pd.DataFrame({'cell_type': cell_type, 'cell_id': cell_id})
+    @staticmethod
+    def _transform_string(s):
+    # Remove the @i parts from the string
+        transformed = re.sub(r'@\d+', '', s)
+        return transformed
+        
+    

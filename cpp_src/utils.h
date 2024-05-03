@@ -68,5 +68,10 @@ int getSizeBoolVector(const std::vector<bool>& v);
 
 std::vector<double> decompressValues(const Quantile& q, const unsigned char& quantization_bits);
 
+std::vector<std::string> splitString(const std::string& str, char delimiter);
+
+std::vector<std::string> extractSubstrings(const std::string& str);
+
+std::string getSubstringSetKey(const std::vector<std::string>& substrings); 
 
 
