@@ -161,7 +161,14 @@ const CellType &EliasFanoDB::getCellType(const CellTypeName &name) const
 const py::tuple EliasFanoDB::getCellTypeMatrix(const CellTypeName &cell_type) const
 {
   const CellType ct = getCellType(cell_type);
-  const CellTypeID ct_id = this->cell_types.at(cell_type);
+  CellTypeID ct_id;
+  try {
+      ct_id = this->cell_types.at(cell_type);
+  } catch (const std::out_of_range& e) {
+      std::cerr << "Error: Cell type '" << cell_type << "' not found." << std::endl;
+      return py::make_tuple(0, 0);
+  }
+  // const CellTypeID ct_id = this->cell_types.at(cell_type);
   std::vector<GeneName> feature_names;
 
   // Feature number will be the feature names size
@@ -1512,6 +1519,15 @@ int EliasFanoDB::mergeDB(const EliasFanoDB &db)
 py::dict EliasFanoDB::getCellMeta(const std::string &ct, const int &num) const
 {
   const auto ct_it = this->cell_types.find(ct);
+  if (ct_it == this->cell_types.end()) 
+  {
+    std::cerr << "Error: Cell type name '" << ct << "' not found." << std::endl;
+    py::dict result;
+    result["total_cells"] = 0;
+    result["total_features"] = 0;
+    return result; 
+  }
+
   const CellID cid(ct_it->second, num);
   const auto cmeta_it = this->cells.find(cid);
   const CellMeta &cmeta = cmeta_it->second;
@@ -1526,6 +1542,14 @@ py::dict EliasFanoDB::getCellMeta(const std::string &ct, const int &num) const
 py::dict EliasFanoDB::getCellTypeMeta(const std::string &ct_name) const
 {
   const auto ct_it = this->cell_types.find(ct_name);
+  if (ct_it == this->cell_types.end()) 
+  {
+    std::cerr << "Error: Cell type name '" << ct_name << "' not found." << std::endl;
+    py::dict result;
+    result["total_cells"] = 0;
+    return result; 
+  }
+
   const CellType &ctmeta = this->inverse_cell_type[ct_it->second];
 
   py::dict result;

@@ -1382,7 +1382,7 @@ class SCFind:
             raise ValueError("Must select at least one category or one cell type. They cannot be empty at the same time.")
 
         if cell_type is None:
-            print(f"No cell types are selected, all cell types in {list(annotation_names.values())} will be used by default.")
+            print(f"No cell types are selected, all cell types in given annotation categories will be used by default.")
             dataset_celltype = self.cellTypeNames(annotation_names=annotation_names)
         
         if annotation_names is None:
@@ -1400,8 +1400,7 @@ class SCFind:
             dataset_celltype = [d_ct for d_ct in all_dataset_celltype if d_ct.split('.')[0] in dataset and d_ct.split('.')[1] in cell_type]
 
         if len(dataset_celltype) == 0:
-            raise ValueError(f"Couldn't find cell type {cell_type} in {list(annotation_names.values())}.\
-                             Please double check the cell types in given annotation_names by index.cellTypeNames(annotation_names).")
+            raise ValueError(f"Couldn't find cell type {cell_type} in given annotation categories. Please double check the cell types in given annotation_names by index.cellTypeNames(annotation_names).")
         return dataset_celltype
 
     def _case_correct(self,
