@@ -574,6 +574,9 @@ class SCFind:
         else:    
             background_dataset_celltype = self._select_celltype(annotation_names=background_annotation_names, cell_type=background_celltypes)
 
+        # Ensure background_dataset_celltype contains elements of foreground cell type, i.e., dataset_celltype
+        background_dataset_celltype = list(set(background_dataset_celltype+dataset_celltype))
+
         all_cell_types = self.index.cellTypeMarkers(dataset_celltype, background_dataset_celltype)
         all_cell_types = pd.DataFrame(all_cell_types)
 
@@ -682,6 +685,9 @@ class SCFind:
             background_dataset_celltype = self.cellTypeNames()
         else:
             background_dataset_celltype = self._select_celltype(annotation_names=background_annotation_names, cell_type=background_cell_types)
+
+        # Ensure background_dataset_celltype contains the foreground cell types, i.e. dataset_celltype
+        background_dataset_celltype = list(set(background_dataset_celltype + dataset_celltype))
         
 
         all_cell_types = self.index.evaluateCellTypeMarkers(
@@ -1623,10 +1629,10 @@ class SCFind:
                 cell_id.extend(values)
 
             return pd.DataFrame({'cell_type': cell_type, 'cell_id': cell_id})
+        
     @staticmethod
     def _transform_string(s):
     # Remove the @i parts from the string
         transformed = re.sub(r'@\d+', '', s)
         return transformed
-        
     
