@@ -1,6 +1,5 @@
 from setuptools import setup, Extension, find_packages
 import pybind11
-import os
 
 # Define the C++ extension
 cpp_extension = Extension(
@@ -12,9 +11,7 @@ cpp_extension = Extension(
         "cpp_src/serialization.cpp",
         "cpp_src/utils.cpp",
     ],
-    include_dirs=["cpp_src", "/opt/homebrew/Cellar/armadillo/12.6.5/include"] + [pybind11.get_include()],
-    libraries=["armadillo"],
-    library_dirs=["/opt/homebrew/Cellar/armadillo/12.6.5/lib"],
+    include_dirs=["cpp_src"] + [pybind11.get_include()],
     language="c++",
     extra_compile_args=["-std=c++14"],
 )

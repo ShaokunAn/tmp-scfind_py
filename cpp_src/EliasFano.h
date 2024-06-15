@@ -65,7 +65,7 @@ class EliasFanoDB
 
   py::bytes getByteStream() const;
 
-  long eliasFanoCoding(const std::vector<int>& ids, const arma::rowvec& values);
+  long eliasFanoCoding(const std::vector<int>& ids, const std::vector<double> &values);
 
   std::vector<int> eliasFanoDecoding(const EliasFano& ef) const;
 

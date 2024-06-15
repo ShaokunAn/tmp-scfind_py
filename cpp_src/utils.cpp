@@ -26,7 +26,7 @@ std::string str_join( const std::vector<std::string>& elements, const char* cons
 
 // Accepts a vector, transforms and returns a quantization logical vector
 // This function aims for space efficiency of the expression vector
-Quantile lognormalcdf(const std::vector<int>& ids, const arma::rowvec& v_array, unsigned int bits, bool raw_counts) {
+Quantile lognormalcdf(const std::vector<int>& ids, const std::vector<double>& v_array, unsigned int bits, bool raw_counts) {
 //    py::buffer_info v_info = v_array.request();
 //    double* v_ptr = static_cast<double*>(v_info.ptr);
 
