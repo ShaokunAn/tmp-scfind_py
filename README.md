@@ -5,30 +5,14 @@
 Single-cell technologies have enabled the profiling of millions of cells. However, for these vast resources to be fully leveraged, they must be easily queryable and accessible. To facilitate interactive and intuitive access to single-cell data, we have developed scfind, a search engine for cell atlases. Scfind can be utilized to evaluate marker genes, perform in silico gating, and identify both cell-type specific and housekeeping genes. An interactive interface with access to nine single-cell datasets is available at [scfind.sanger.ac.uk](https://scfind.sanger.ac.uk).
 
 ## Installation
-scfind is available as a package for Python and R, with C++ extensions. The scfind R library is accessible at [our GitHub repository](https://github.com/hemberg-lab/scfind). Before installing the scfind Python package, the Armadillo library, a C++ linear algebra library, must be installed.
+scfind is available as a package for Python and R, with C++ extensions. The corresponding scfind R library is accessible at [our GitHub repository](https://github.com/hemberg-lab/scfind). 
 
-**Step 1: Install Armadillo**
+The python package is available by 
 
-If you have Homebrew  installed, Armadillo can be installed with the following command:
-
-```bash
-brew install armadillo
 ```
+pip install --index-url https://test.pypi.org/simple/ scfind
 
-Alternatively, you can download the source files and compile them mannually. See the [Armadillo documentation](https://arma.sourceforge.net) for more details.
-
-**Step 2: Install the scfind package**
-
-```bash
-git clone https://github.com/ShaokunAn/tmp-scfind_py.git
-cd tmp-scfind_py
-pip install -r requirements.txt
-python setup.py build_ext --inplace
-python setup.py sdist bdist_wheel
-pip install .
 ```
-
-
 
 ## Tutorials
 
