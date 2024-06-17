@@ -35,7 +35,7 @@ setup(
     python_requires='>=3.8',
     install_requires=[
         'numpy>=1.24.4',
-        'scipy>=1.10.1',
+        'scipy==1.12',
         'statsmodels>=0.14.0',
         'pybind11>=2.11.1',
         'pandas>=2.0.3',
