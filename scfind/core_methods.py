@@ -104,8 +104,11 @@ class SCFind:
                 raise ValueError(f"'{feature_name}' not found in adata.var")
 
             cell_type_exp = cell_type_exp.astype(np.float64)
-            # Convert python matrix into
             if is_sparse:
+                # make sure the sparse matrix is csr format
+                if not scipy.sparse.isspmatrix_csr(cell_type_exp):
+                    cell_type_exp = cell_type_exp.tocsr()
+
                 ef.indexMatrix(new_cell_types[cell_type], cell_type_exp, cell_type_genes)
             else:
                 ef.indexMatrix_dense(new_cell_types[cell_type], cell_type_exp, cell_type_genes)
