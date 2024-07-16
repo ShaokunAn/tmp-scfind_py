@@ -402,6 +402,11 @@ class SCFind:
         if isinstance(cell_types, str):
             cell_types = [cell_types]
 
+        background_cell_types_set = set(background_cell_types)
+        background_cell_types_set.update(set(cell_types))
+
+        background_cell_types = list(background_cell_types_set)
+
         all_cell_types = self.index.cellTypeMarkers(cell_types, background_cell_types)
         all_cell_types = pd.DataFrame(all_cell_types)
 
@@ -501,6 +506,11 @@ class SCFind:
 
         if isinstance(cell_types, str):
             cell_types = [cell_types]
+
+        background_cell_types_set = set(background_cell_types)
+        background_cell_types_set.update(set(cell_types))
+
+        background_cell_types = list(background_cell_types_set)
 
         all_cell_types = self.index.evaluateCellTypeMarkers(
             cell_types,
