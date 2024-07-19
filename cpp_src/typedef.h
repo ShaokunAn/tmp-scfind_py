@@ -72,7 +72,6 @@ typedef struct
   std::vector<bool> quantile;
 } Quantile;
 
-
 class EliasFano
 {
 public:

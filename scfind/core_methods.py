@@ -8,6 +8,7 @@ from EliasFanoDB import EliasFanoDB
 from anndata import AnnData
 from scipy.sparse import csr_matrix
 from scipy.stats import hypergeom
+from scipy import stats
 from statsmodels.stats.multitest import multipletests
 from tqdm import tqdm
 
@@ -1108,6 +1109,79 @@ class SCFind:
         else:
             print(f"Cannot find cell expressing {', '.join(gene_list)} in the index.")
             return pd.DataFrame()
+
+    def de_genes(
+            self,
+            cell_type1: str,
+            cell_type2: str,
+            genes: Union[str, List[str]] = None,
+            alpha: float = 0.05,
+            ) -> pd.DataFrame:
+        """
+        Identify differentially expressed (DE) genes between two cell types.
+        For each gene, this function tests if the proportion of cells expressing the gene is significantly different
+        between the two cell types.
+
+        Parameters
+        ----------
+        cell_type1: str
+            the first cell type to study DE genes
+
+        cell_type2: str
+            the second cell type to study DE genes
+
+        genes: str or list of str, optional
+            List of genes to analyze. If None, all genes are used.
+
+        alpha : float, optional
+            Significance level for statistical tests. Default is 0.05.
+
+        Returns
+        -------
+        A dataframe containing the DE genes.
+        """
+        valid_cell_types = self.cellTypeNames()
+        if not (cell_type1 in valid_cell_types and cell_type2 in valid_cell_types):
+            raise ValueError("Input cell types are not valid in index. \n"
+                             "Check all cell type names by index.cellTypeNames()")
+        if genes is not None:
+            valid_genes = self._case_correct(genes)
+        else:
+            valid_genes = self.scfindGenes
+
+        results = self.index.DEGenes(cell_type1, cell_type2, valid_genes)
+
+        results_df = pd.DataFrame(results).sort_values('p_value', ignore_index=True)
+        adjusted_pvals = multipletests(results_df['p_value'], method='holm')[1]
+        results_df['adj_p_value'] = adjusted_pvals
+        results_df = results_df[results_df['adj_p_value'] < alpha]
+        results_df['de_in'] = np.where(
+            (results_df['proportion_1'] > results_df['proportion_2']),
+            cell_type1,
+            np.where(
+                (results_df['proportion_2'] > results_df['proportion_1']),
+                cell_type2,
+                None
+            )
+        )
+        return results_df
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     @staticmethod
     def _buildCellTypeIndex(self,

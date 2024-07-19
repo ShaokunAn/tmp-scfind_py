@@ -1233,6 +1233,99 @@ py::dict EliasFanoDB::getCellTypeMeta(const std::string &ct_name) const
   return result;
 }
 
+std::vector<py::dict> EliasFanoDB::DEGenes(const std::string &ct1, const std::string &ct2, const py::list genes_obj)
+{ 
+  std::vector<std::string> genes;
+  bool use_gene_names = !genes_obj.is_none();
+  if (use_gene_names) {
+      genes = genes_obj.cast<std::vector<std::string>>();
+  }else{
+    genes.reserve(this->genes.size());
+    for (auto const &g : this->genes){
+      genes.push_back(g.first);
+    }
+  }
+
+  int n_genes = genes.size();
+  std::vector<py::dict> results;
+  results.reserve(n_genes);
+
+  for (int i = 0; i < n_genes; ++i){
+    std::string gene = genes[i];
+    // std::cout<<"gene: "<<gene<<std::endl;
+    int x_1, x_2;
+    try
+    {
+      const EliasFano ef1 = this->ef_data.at(this->index.at(gene).at(this->cell_types.at(ct1)));
+      std::vector<int> cell_ids1 = eliasFanoDecoding(ef1);
+      x_1 = cell_ids1.size();
+    }
+    catch (const std::out_of_range &e){
+      x_1 = 0;
+    }
+    // std::cout<<"x_1="<<x_1<<std::endl;
+
+    try
+    {
+      const EliasFano ef2 = this->ef_data.at(this->index.at(gene).at(this->cell_types.at(ct2)));
+      std::vector<int> cell_ids2 = eliasFanoDecoding(ef2);
+      x_2 = cell_ids2.size();
+    }
+    catch (const std::out_of_range &e){
+      x_2 = 0;
+    }
+    // std::cout<<"x_2="<<x_2<<std::endl;
+    
+    int n_1, n_2;
+    auto cit1 = this->cell_types.find(ct1);
+    auto cit2 = this->cell_types.find(ct2);
+    if (cit1 != this->cell_types.end()){
+      n_1 = this->inverse_cell_type[cit1->second].total_cells;
+    }else{
+      n_1 = 0;
+    }
+    if (cit2 != this->cell_types.end()){
+      n_2 = this->inverse_cell_type[cit2->second].total_cells;
+    }else{
+      n_2 = 0;
+    }
+    // std::cout<<"n_1="<<n_1<<std::endl;
+    // std::cout<<"n_2="<<n_2<<std::endl;
+    
+    double p_1 = static_cast<double>(x_1) / n_1;
+    double p_2 = static_cast<double>(x_2) / n_2;
+
+    // std::cout<<"p_1="<<p_1<<std::endl;
+    // std::cout<<"p_2="<<p_2<<std::endl;
+
+    double p_value;
+    std::string test_used;
+    if (std::min({x_1, n_1-x_1, x_2, n_2-x_2}) < 5){
+      p_value = fisher_exact_test(x_1, n_1-x_1, x_2, n_2-x_2);
+      test_used = "Fisher";
+    }else{
+      double p_pooled = static_cast<double>(x_1 + x_2)/(n_1 + n_2);
+      double se = std::sqrt(p_pooled * (1 - p_pooled) * (1.0/n_1 + 1.0/n_2));
+      double z_score = (p_1 - p_2)/std::max(se, 1e-8); // Avoid division by zero
+      p_value = 2 * (1 - 0.5 * std::erfc(-std::abs(z_score) / std::sqrt(2)));
+      test_used = "z-test";
+    }
+    
+    py::dict gene_result;
+    gene_result["gene"] = gene;
+    gene_result["proportion_1"] = p_1;
+    gene_result["proportion_2"] = p_2;
+    gene_result["abs difference"] = abs(p_2-p_1);
+    gene_result["p_value"] = p_value;
+    gene_result["test_used"] = test_used;
+
+    results.push_back(gene_result);
+  }
+
+  return results;
+}
+
+
 const arma::sp_mat EliasFanoDB::csr_to_sp_mat(const py::object& csr_obj) {
   if (py::isinstance<py::array_t<int>>(csr_obj.attr("indptr")) &&
       py::isinstance<py::array_t<int>>(csr_obj.attr("indices")) &&
@@ -1332,5 +1425,6 @@ PYBIND11_MODULE(EliasFanoDB, m){
     .def("getCellTypeMeta", &EliasFanoDB::getCellTypeMeta)
     .def("evaluateCellTypeMarkersAND", &EliasFanoDB::evaluateCellTypeMarkersAND)
     .def("evaluateCellTypeMarkers", &EliasFanoDB::evaluateCellTypeMarkers)
-    .def("getCellTypeSupport", &EliasFanoDB::getCellTypeSupport);
+    .def("getCellTypeSupport", &EliasFanoDB::getCellTypeSupport)
+    .def("DEGenes", &EliasFanoDB::DEGenes);
 }

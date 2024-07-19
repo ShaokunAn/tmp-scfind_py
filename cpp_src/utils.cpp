@@ -343,5 +343,19 @@ std::set<Pattern> exhaustiveFrequentItemsetMining(const py::dict& genes_results,
   return results;
 }
 
+double fisher_exact_test(int a, int b, int c, int d) {
+    double n = a + b + c + d;
+    auto log_factorial = [](int x) {
+        double result = 0;
+        for (int i = 2; i <= x; ++i) {
+            result += std::log(i);
+        }
+        return result;
+    };
+    double p = log_factorial(a + b) + log_factorial(c + d) + log_factorial(a + c) + log_factorial(b + d)
+              - log_factorial(a) - log_factorial(b) - log_factorial(c) - log_factorial(d) - log_factorial(n);
+    return std::exp(p);
+}
+
 
 
