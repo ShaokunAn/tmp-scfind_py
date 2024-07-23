@@ -1116,6 +1116,7 @@ class SCFind:
             cell_type2: str,
             genes: Union[str, List[str]] = None,
             alpha: float = 0.05,
+            min_fraction: float = 0.25,
             ) -> pd.DataFrame:
         """
         Identify differentially expressed (DE) genes between two cell types.
@@ -1136,6 +1137,9 @@ class SCFind:
         alpha : float, optional
             Significance level for statistical tests. Default is 0.05.
 
+        min_fraction: float, default 0.25
+            Portion of total cell expressed DE genes as threshold.
+
         Returns
         -------
         A dataframe containing the DE genes.
@@ -1149,7 +1153,7 @@ class SCFind:
         else:
             valid_genes = self.scfindGenes
 
-        results = self.index.DEGenes(cell_type1, cell_type2, valid_genes)
+        results = self.index.DEGenes(cell_type1, cell_type2, valid_genes, min_fraction)
 
         results_df = pd.DataFrame(results).sort_values('p_value', ignore_index=True)
         adjusted_pvals = multipletests(results_df['p_value'], method='holm')[1]

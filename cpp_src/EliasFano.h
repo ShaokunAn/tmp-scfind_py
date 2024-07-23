@@ -167,7 +167,7 @@ class EliasFanoDB
 
   int mergeDB(const EliasFanoDB& db);
 
-  std::vector<py::dict> DEGenes(const std::string &ct1, const std::string &ct2, const py::list genes_obj);
+  std::vector<py::dict> DEGenes(const std::string &ct1, const std::string &ct2, const py::list genes_obj, const double &min_fraction);
 
 
 };
