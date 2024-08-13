@@ -10,7 +10,6 @@ int SerializationDB::loadByteStream(const py::bytes& stream)
 {
   std::string str_stream = stream;  // Convert py::bytes to std::string
   this->serialized_bytestream = std::vector<unsigned char>(str_stream.begin(), str_stream.end());
-
   std::cout << this->serialized_bytestream.size() / (1 << 20)  << " MB "<< std::endl;
   return 1;
 }
@@ -182,10 +181,8 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
 
   read(efdb.quantization_bits);
 
-
   int genes_present;
   read(genes_present);
-
 
   if (not (genes_present > 0) )
   {
@@ -208,14 +205,11 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
     read(gene_meta);
     efdb.genes[buffer] = gene_meta;
     efdb.index[buffer] = EliasFanoDB::GeneContainer();
-    // std::cout << "gene" << buffer << std::endl;
     gene_ids.push_back(buffer);
   }
 
-
   int number_of_cells;
   read(number_of_cells);
-
   for (int i = 0; i < number_of_cells; i++)
   {
     CellID cell_id(0,0);
@@ -224,8 +218,6 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
     read(cell);
     efdb.cells.insert({cell_id, cell});
   }
-
-
 
   // Read cell type names
   int cell_types_present;
@@ -268,7 +260,6 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
     records.push_back(record);
   }
 
-
   for (int i = 0; i < index_size; i++)
   {
     EliasFano ef;
@@ -276,7 +267,6 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
     efdb.ef_data.push_back(ef);
 
   }
-
 
   // Build database
   for (auto const& r : records)
@@ -360,14 +350,12 @@ void SerializationDB::serialize(const EliasFanoDB& efdb)
     write(cell_type_name_size);
     writeBuffer(&ct.name[0], cell_type_name_size);
     write(ct.total_cells);
-    //std::cout << ct << std::endl;
   }
 
   // Dump records
   // Write size of index, if it is 1:1 relation it should be consistent
   int index_size = efdb.ef_data.size();
   write(index_size);
-  std::cout << "Index size " << index_size << std::endl;
 
   for (auto const& g : efdb.index)
   {

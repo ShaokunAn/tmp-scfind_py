@@ -100,7 +100,7 @@ class EliasFanoDB
 
   CellTypeIndex getCellTypeIDs(const std::set<std::string>& datasets) const;
 
-  py::list getCellTypeSupport(py::list& cell_types);
+  py::list getCellTypeSupport(py::list& cell_types, bool is_merge = true);
 
   py::dict queryGenes(const py::list& gene_names, const py::list& datasets_active) const;
 
@@ -140,7 +140,9 @@ class EliasFanoDB
 
 
 
-  std::map<GeneName, CellTypeMarker> _cellTypeScore(const std::string& cell_type, const std::vector<std::string>& universe, const std::vector <GeneName>&, int mode = ALL) const;
+  // std::map<GeneName, CellTypeMarker> _cellTypeScore(const std::string& cell_type, const std::vector<std::string>& universe, const std::vector <GeneName>&, int mode = ALL) const;
+
+  std::unordered_map<GeneName, std::tuple<int, int, int, int>> _cellTypeCount(const std::string &cell_type, const std::vector<std::string> &universe, const std::vector<GeneName> &gene_names, int mode = ALL) const;
 
   const std::set<std::string> _getValidCellTypes(std::vector<std::string> universe) const;
 
@@ -167,7 +169,7 @@ class EliasFanoDB
 
   int mergeDB(const EliasFanoDB& db);
 
-  std::vector<py::dict> DEGenes(const std::string &ct1, const std::string &ct2, const py::list genes_obj, const double &min_fraction);
+  std::vector<py::dict> DEGenes(const py::list &ct1, const py::list &ct2, const py::list genes_obj, const double &min_fraction);
 
 
 };
