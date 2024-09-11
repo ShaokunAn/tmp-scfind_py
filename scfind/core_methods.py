@@ -658,6 +658,10 @@ class SCFind:
         regular_genes = [gene for gene in gene_list if gene.startswith("-") or gene.startswith("*")]
         if len(regular_genes) == 0:
             sanitized_genes = self._case_correct(gene_list)
+            if not sanitized_genes:
+                # if no valid genes returned, return {}
+                print(f"All input genes are not valid.")
+                return {}
             if all(isinstance(gene, str) for gene in sanitized_genes):
                 cts = self.index.findCellTypes(sanitized_genes, datasets_timestamp)
                 # in python, index starts at 0
