@@ -904,14 +904,17 @@ class SCFind:
         df = pd.concat([res_df, res_tissue_df], axis=1)
 
         if df.empty:
-            return {gene: [0] for gene in gene_list}
+            return {gene: 0 for gene in gene_list}
         else:
             df.iloc[:, 0] = df.iloc[:, 3].str.replace(r'^[^.]+\.', '', regex=True).apply(
                 lambda x: np.sum(self.index.getCellTypeSupport(self._select_celltype_stamp(x), True)) * min_fraction)
 
             df.loc[df.iloc[:, 0] < min_cells, df.columns[0]] = min_cells
             df = df[df.iloc[:, 2] > df.iloc[:, 0]]
-            return df.iloc[:, 1].value_counts().to_dict()
+            if df.empty:
+                return {gene: 0 for gene in gene_list}
+            else:
+                return df.iloc[:, 1].value_counts().to_dict()
 
     def findTissueSpecificities(self,
                                 gene_list: Optional[Union[str, List[str]]] = None,
@@ -1044,7 +1047,7 @@ class SCFind:
                            cell_types: Optional[Union[str, List[str]]] = None,
                            max_genes: int = 1000,
                            min_cells: int = 10,
-                           max_pval: float = 0
+                           max_pval: float = 0.05
                            ) -> Union[Dict[str, List[str]], str]:
         """
         Find the list of gene signatures in a query of cell types.
@@ -1061,8 +1064,8 @@ class SCFind:
         min_cells: int, default=10
             Threshold of cell hit of a tissue. Defaults to 10.
 
-        max_pval: float, default=0
-            Threshold of p-value. Defaults to 0.
+        max_pval: float, default=0.05
+            Threshold of p-value.
 
         Returns
         -------
@@ -1454,7 +1457,7 @@ class SCFind:
                         cell_type: str,
                         max_genes: int = 1000,
                         min_cells: int = 10,
-                        max_pval: float = 0
+                        max_pval: float = 0.05
                         ) -> List[str]:
         """
         Use this method to find a gene signature for a cell type.
@@ -1485,7 +1488,7 @@ class SCFind:
         genes_list = []
         cell_type_stamp = self._select_celltype_stamp(cell_type)
         total_cells = np.sum([self.index.getCellTypeMeta(ct)['total_cells'] for ct in cell_type_stamp])
-        thres = max(min_cells, total_cells)
+        thres = min(min_cells, total_cells)
 
         for j in range(len(df)):
 
@@ -1497,7 +1500,7 @@ class SCFind:
                 if not ind.any():
                     break
                 else:
-                    if (res[ind].iloc[:, 3] > max_pval).all() or (res[ind].iloc[:, 1] < thres).any():
+                    if (res[ind].loc[:, 'adj-pval'] > max_pval).all() or (res[ind].iloc[:, 1] < thres).any():
                         break
 
             genes_list.append(genes[j])
