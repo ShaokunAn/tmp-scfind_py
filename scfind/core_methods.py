@@ -578,7 +578,7 @@ class SCFind:
             print(f"Column {sort_field} not found. F1 score would be used.")
             sort_field = 'f1'
 
-        all_cell_types = all_cell_types.sort_values(by=sort_field, ascending=True, ignore_index=True)
+        all_cell_types = all_cell_types.sort_values(by=sort_field, ascending=False, ignore_index=True)
 
         if not include_prefix:
             all_cell_types['cellType'] = all_cell_types['cellType'].str.split(".").str[-1]
