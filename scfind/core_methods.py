@@ -526,7 +526,7 @@ class SCFind:
             print(f"Column {sort_field} not found")
             sort_field = 'f1'
 
-        all_cell_types = all_cell_types.sort_values(by=sort_field, ascending=True, ignore_index=True)
+        all_cell_types = all_cell_types.sort_values(by=sort_field, ascending=False, ignore_index=True)
 
         if not include_prefix:
             all_cell_types['cellType'] = all_cell_types['cellType'].str.split(".").str[-1]
@@ -573,7 +573,7 @@ class SCFind:
         result = self.findCellTypes(gene_list, datasets)
         if result:
             df = self._phyper_test(result)
-            df = df.sort_values(by='pval', ascending=True, ignore_index=True)
+            df = df.sort_values(by='adj-pval', ascending=True, ignore_index=True)
             if not include_prefix:
                 # Split the 'cell_type' column and keep only the suffix
                 df['cell_type'] = df['cell_type'].str.split('.').str[-1]
@@ -581,7 +581,9 @@ class SCFind:
         else:
             print("No Cell Is Found!")
             return pd.DataFrame({'cell_type': [], 'cell_hits': [],
-                                 'total_cells': [], 'pval': []})
+                                 'total_cells': [], 'pval': [],
+                                 'adj-pval': []
+                                 })
 
     def findCellTypes(self,
                       gene_list: Union[str, List[str]],
@@ -841,16 +843,19 @@ class SCFind:
 
         df = pd.concat([res_df, res_tissue_df], axis=1)
 
-        df.iloc[:, 0] = df.iloc[:, 3].str.replace(r'^[^.]+\.', '', regex=True).apply(
-            lambda x: self.index.getCellTypeSupport([x])[0] * min_fraction)
-
-        df.loc[df.iloc[:, 0] < min_cells, df.columns[0]] = min_cells
-
-        if not df.empty:
-            df = df[df.iloc[:, 2] > df.iloc[:, 0]]
-            return df.iloc[:, 1].value_counts().to_dict()
+        if df.empty:
+            return {gene: 0 for gene in gene_list}
         else:
-            return {gene: [0] for gene in gene_list}
+            df.iloc[:, 0] = df.iloc[:, 3].str.replace(r'^[^.]+\.', '', regex=True).apply(
+                lambda x: self.index.getCellTypeSupport([x])[0] * min_fraction)
+
+            df.loc[df.iloc[:, 0] < min_cells, df.columns[0]] = min_cells
+            df = df[df.iloc[:, 2] > df.iloc[:, 0]]
+            if df.empty:
+                return {gene: 0 for gene in gene_list}
+            else:
+                return df.iloc[:, 1].value_counts().to_dict()
+
 
     def findTissueSpecificities(self,
                                 gene_list: Optional[Union[str, List[str]]] = None,
@@ -982,7 +987,7 @@ class SCFind:
                            cell_types: Optional[Union[str, List[str]]] = None,
                            max_genes: int = 1000,
                            min_cells: int = 10,
-                           max_pval: float = 0
+                           max_pval: float = 0.05
                            ) -> Union[Dict[str, List[str]], str]:
         """
         Find the list of gene signatures in a query of cell types.
@@ -999,8 +1004,8 @@ class SCFind:
         min_cells: int, default=10
             Threshold of cell hit of a tissue. Defaults to 10.
 
-        max_pval: float, default=0
-            Threshold of p-value. Defaults to 0.
+        max_pval: float, default=0.05
+            Threshold of p-value. 
 
         Returns
         -------
@@ -1250,7 +1255,7 @@ class SCFind:
                         cell_type: str,
                         max_genes: int = 1000,
                         min_cells: int = 10,
-                        max_pval: float = 0
+                        max_pval: float = 0.05
                         ) -> List[str]:
         """
         Use this method to find a gene signature for a cell type.
@@ -1279,7 +1284,7 @@ class SCFind:
         df = self.cellTypeMarkers([cell_type], top_k=max_genes, sort_field="recall")
         genes = [str(gene) for gene in df['genes']]
         genes_list = []
-        thres = max(min_cells, self.index.getCellTypeMeta(cell_type)['total_cells'])
+        thres = min(min_cells, self.index.getCellTypeMeta(cell_type)['total_cells'])
 
         for j in range(len(df)):
 
@@ -1291,7 +1296,7 @@ class SCFind:
                 if not ind.any():
                     break
                 else:
-                    if (res[ind].iloc[:, 3] > max_pval).all() or (res[ind].iloc[:, 1] < thres).any():
+                    if (res[ind].loc[:, 'adj-pval'] > max_pval).all() or (res[ind].iloc[:, 1] < thres).any():
                         break
 
             genes_list.append(genes[j])
@@ -1336,7 +1341,7 @@ class SCFind:
 
         # Adjust p-values using Holm adjustment method
         adjusted_pvals = multipletests(cell_types_df['pval'], method='holm')[1]
-        cell_types_df['pval'] = adjusted_pvals
+        cell_types_df['adj-pval'] = adjusted_pvals
 
         return cell_types_df
 
