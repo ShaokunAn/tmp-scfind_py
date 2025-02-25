@@ -80,7 +80,9 @@ class SCFind:
 
         cell_types = cell_types_all.cat.categories.tolist()
         # Assuming tissue and cell_types are already defined, and use dataset_id as stamp to distinguish datasets
-        dataset_name_stamp = f"{tissue}_{dataset_id_modified}"
+        tissue_modified = tissue.replace('.', '-')
+        tissue_modified = tissue_modified.replace('_', '-')
+        dataset_name_stamp = f"{tissue_modified}_{dataset_id_modified}"
         new_cell_types = {cell_type: f"{dataset_name_stamp}.{cell_type}" for cell_type in cell_types}
 
         if len(cell_types) == 0:
@@ -123,8 +125,8 @@ class SCFind:
                 ef.indexMatrix_dense(new_cell_types[cell_type], cell_type_exp, cell_type_genes)
 
         self.index = ef
-        self.datasets = [tissue]
-        self.datasets_map[tissue] = [dataset_name_stamp]
+        self.datasets = [tissue_modified]
+        self.datasets_map[tissue_modified] = [dataset_name_stamp]
         self.index_exist = True
 
     def saveObject(self, file: str) -> None:
