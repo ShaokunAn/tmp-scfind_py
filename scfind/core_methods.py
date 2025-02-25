@@ -28,8 +28,9 @@ class SCFind:
         self.datasets_map = {}
 
     def buildCellTypeIndex(self, adata: AnnData,
-                           dataset_name: str,
-                           feature_name: str = 'feature_name',
+                           dataset_id: str,
+                           tissue: str,
+                           feature_name: str = 'gene',
                            cell_type_label: str = 'cell_type',
                            qb: int = 2
                            ) -> None:
@@ -41,16 +42,14 @@ class SCFind:
         adata: AnnData
             The annotated data matrix of shape (n_obs, n_vars). Rows correspond to cells
             and columns to genes.
-
-        dataset_name: str
-            Name of the dataset.
-
-        feature_name: str, default='feature_name'
+        dataset_id: str
+            Dataset ID obtained from HuBMAP.
+        tissue: str
+            Tissue name.
+        feature_name: str, default='gene'
             The label or key in the AnnData object's variables (var) that corresponds to the feature names.
-
         cell_type_label: str, default='cell_type'
             The label or key in the AnnData object's observations (obs) that corresponds to the cell type.
-
         qb: int, default=2
             Number of bits per cell that are going to be used for quantile compression of the expression data.
 
@@ -62,13 +61,12 @@ class SCFind:
         Raises
         ------
         ValueError
-            If dataset_name contains any dots or if assay_name is not found in the AnnData object.
+            If dataset_id contains any dots or if assay_name is not found in the AnnData object.
         """
 
-        # check if dataset_name contains any dots
-        if '.' in dataset_name or '_' in dataset_name:
-            raise ValueError("The dataset name should not contain any dots or underscores.")
-
+        # Use id to separate dataset_id and tissue
+        dataset_id_modified = dataset_id.replace('.', '-')  # use - to replace . in dataset_id
+        dataset_id_modified = dataset_id_modified.replace('_', '-')
         # Get cell types
         try:
             cell_types_all = adata.obs[cell_type_label].astype('category')
@@ -76,15 +74,14 @@ class SCFind:
             raise ValueError(f"'{cell_type_label}' not found in adata.obs.")
 
         cell_types = cell_types_all.cat.categories.tolist()
-        # Assuming dataset_name and cell_types are already defined, and use time stamp to distinguish datasets
-        current_timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-        dataset_name_timestamp = f"{dataset_name}_{current_timestamp}"
-        new_cell_types = {cell_type: f"{dataset_name_timestamp}.{cell_type}" for cell_type in cell_types}
+        # Assuming tissue and cell_types are already defined, and use dataset_id as stamp to distinguish datasets
+        dataset_name_stamp = f"{tissue}_{dataset_id_modified}"
+        new_cell_types = {cell_type: f"{dataset_name_stamp}.{cell_type}" for cell_type in cell_types}
 
         if len(cell_types) == 0:
             raise ValueError("No cell types found in the provided AnnData object.")
 
-        print(f"Generating index for {dataset_name}")
+        print(f"Generating index for {dataset_name_stamp}")
 
         non_zero_cell_types = []
         # Get expression data
@@ -121,8 +118,8 @@ class SCFind:
                 ef.indexMatrix_dense(new_cell_types[cell_type], cell_type_exp, cell_type_genes)
 
         self.index = ef
-        self.datasets = [dataset_name]
-        self.datasets_map[dataset_name] = [dataset_name_timestamp]
+        self.datasets = [tissue]
+        self.datasets_map[tissue] = [dataset_name_stamp]
         self.index_exist = True
 
     def saveObject(self, file: str) -> None:
