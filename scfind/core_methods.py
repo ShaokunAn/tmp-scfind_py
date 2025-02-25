@@ -749,8 +749,8 @@ class SCFind:
         result = self.findCellTypes(gene_list, annotation_names=annotation_names, is_merge=True)
         if result:
             df = self._phyper_test(result)
-            df = df.sort_values(by='pval', ascending=True, ignore_index=True)
-            df = df[df['pval']<0.05]
+            df = df.sort_values(by='adj-pval', ascending=True, ignore_index=True)
+            df = df[df['adj-pval']<0.05]
             if not include_prefix:
                 # Split the 'cell_type' column and keep only the suffix
                 df['cell_type'] = df['cell_type'].str.split('.').str[-1]
@@ -758,7 +758,9 @@ class SCFind:
         else:
             print("No Cell Is Found!")
             return pd.DataFrame({'cell_type': [], 'cell_hits': [],
-                                 'total_cells': [], 'pval': []})
+                                 'total_cells': [], 'pval': [],
+                                 'adj-pval': []
+                                 })
 
     def findCellTypes(self,
                       gene_list: Union[str, List[str]],
@@ -1022,17 +1024,19 @@ class SCFind:
 
         df = pd.concat([res_df, res_tissue_df], axis=1)
 
-        df.iloc[:, 0] = df.iloc[:, 3].str.replace(r'^[^.]+\.', '', regex=True).apply(
-            lambda x: self.index.getCellTypeSupport_([x])[0] * min_fraction)
-
-        df.loc[df.iloc[:, 0] < min_cells, df.columns[0]] = min_cells
-
-        if not df.empty:
-            df = df[df.iloc[:, 2] > df.iloc[:, 0]]
-            return df.iloc[:, 1].value_counts().to_dict()
+        if df.empty:
+            return {gene: 0 for gene in gene_list}
         else:
-            return {gene: [0] for gene in gene_list}
+            df.iloc[:, 0] = df.iloc[:, 3].str.replace(r'^[^.]+\.', '', regex=True).apply(
+                lambda x: self.index.getCellTypeSupport_([x])[0] * min_fraction)
+            df.loc[df.iloc[:, 0] < min_cells, df.columns[0]] = min_cells
+            df = df[df.iloc[:, 2] > df.iloc[:, 0]]
+            if df.empty:
+                return {gebe: 0 for gene in gene_list}
+            else:
+                return df.iloc[:, 1].value_counts().to_dict()
 
+        
     def findTissueSpecificities(self,
                                 gene_list: Optional[Union[str, List[str]]] = None,
                                 min_cells: int = 10
@@ -1479,7 +1483,7 @@ class SCFind:
                         cell_type: List[str],
                         max_genes: int = 1000,
                         min_cells: int = 10,
-                        max_pval: float = 0
+                        max_pval: float = 0.05
                         ) -> List[str]:
         """
         Use this method to find a gene signature for a cell type.
@@ -1498,7 +1502,7 @@ class SCFind:
             The minimum number of cells. Default is 10.
 
         max_pval: float, default=0.05
-            The maximum p-value. Default is 0.05.
+            The maximum p-value. 
 
         Returns
         -------
@@ -1524,7 +1528,7 @@ class SCFind:
         size = 0
         for ct in cell_type:
             size += self.index.getCellTypeMeta(ct)['total_cells']
-        thres = max(min_cells, size)
+        thres = min(min_cells, size)
 
         for j in range(len(df)):
 
@@ -1536,7 +1540,7 @@ class SCFind:
                 if not ind.any():
                     break
                 else:
-                    if (res[ind].iloc[:, 3] > max_pval).all() or (res[ind].iloc[:, 1] < thres).any():
+                    if (res[ind].loc[:, 'adj-pval'] > max_pval).all() or (res[ind].iloc[:, 1] < thres).any():
                         break
 
             genes_list.append(genes[j])
@@ -1582,7 +1586,7 @@ class SCFind:
 
         # Adjust p-values using Holm adjustment method
         adjusted_pvals = multipletests(cell_types_df['pval'], method='holm')[1]
-        cell_types_df['pval'] = adjusted_pvals
+        cell_types_df['adj-pval'] = adjusted_pvals
 
         return cell_types_df
 
