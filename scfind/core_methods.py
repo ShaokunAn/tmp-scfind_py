@@ -12,7 +12,7 @@ from scipy.stats import hypergeom
 from scipy import stats
 from statsmodels.stats.multitest import multipletests
 from tqdm import tqdm
-import datetime
+
 
 
 class SCFind:
@@ -42,14 +42,19 @@ class SCFind:
         adata: AnnData
             The annotated data matrix of shape (n_obs, n_vars). Rows correspond to cells
             and columns to genes.
+
         dataset_id: str
             Dataset ID obtained from HuBMAP.
+
         tissue: str
             Tissue name.
+
         feature_name: str, default='gene'
             The label or key in the AnnData object's variables (var) that corresponds to the feature names.
+
         cell_type_label: str, default='cell_type'
             The label or key in the AnnData object's observations (obs) that corresponds to the cell type.
+
         qb: int, default=2
             Number of bits per cell that are going to be used for quantile compression of the expression data.
 
@@ -226,7 +231,7 @@ class SCFind:
         common_datasets = set(self.datasets).intersection(new_object.datasets)
         new_datasets = set(new_object.datasets).difference(common_datasets)
 
-        # merge same dataset (distinguished by time stamp)  
+        # merge same dataset (distinguished by stamp)
         if common_datasets:
             for d in common_datasets:
                 self.datasets_map[d].extend(new_object.datasets_map[d])
@@ -240,11 +245,11 @@ class SCFind:
 
         self.index.mergeDB(new_object.index)
 
-
     def mergeAnnData(self, adata: AnnData,
-                     dataset_name: str,
-                     feature_name: str = 'feature_name',
-                     cell_type_label: str = 'cell_type1',
+                     dataset_id: str,
+                     tissue: str,
+                     feature_name: str = 'gene',
+                     cell_type_label: str = 'cell_type',
                      qb: int = 2
                      ) -> None:
         """
@@ -255,8 +260,11 @@ class SCFind:
         adata: AnnData
             The annotated data matrix of shape (n_obs, n_vars)
 
-        dataset_name: str
-            Name of the dataset that will be prepended in each cell type
+        dataset_id: str
+            Dataset ID obtained from HuBMAP.
+
+        tissue: str
+            Tissue name.
 
         feature_name: str, default='feature_name'
             Name of the feature to be used, typically indicate gene names.
@@ -281,7 +289,8 @@ class SCFind:
 
         new_object = SCFind()._buildCellTypeIndex(
             adata=adata,
-            dataset_name=dataset_name,
+            dataset_id=dataset_id,
+            tissue=tissue,
             feature_name=feature_name,
             cell_type_label=cell_type_label,
             qb=qb,
@@ -323,16 +332,16 @@ class SCFind:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
 
-        datasets = self._select_datasets(datasets)
+        datasets = self._select_datasets(datasets)  # Identify valid datasets (no stamp)
         if not datasets:
             raise ValueError(f"No valid dataset identified in input. Use index.datasets to check valid datasets.")
         
-        datasets_time_stamp = [d for ds_timestamp in datasets for d in self.datasets_map[ds_timestamp]]
+        datasets_name_stamp = [ds_stamp for d in datasets for ds_stamp in self.datasets_map[d]]
 
         try:
             results = self.index.findMarkerGenes(
                 self._case_correct(gene_list),
-                datasets_time_stamp,
+                datasets_name_stamp,
                 exhaustive,
                 support_cutoff
             )
@@ -353,6 +362,7 @@ class SCFind:
         ----------
         cell_type: str
             The cell type for which we want to retrieve the expression data.
+            The format should be tissue(dataset).cell_type
 
         Returns
         -------
@@ -363,10 +373,10 @@ class SCFind:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
         
-        cell_type_timestamp = self._select_celltype_timestamp(cell_type)
+        cell_type_stamp = self._select_celltype_stamp(cell_type)
 
         adatas = []
-        for ct in cell_type_timestamp:
+        for ct in cell_type_stamp:
             result = self.index.getCellTypeExpression(ct)
             
             if len(result) == 5:  # sparse matrix
@@ -400,10 +410,12 @@ class SCFind:
         ----------
         cell_types: str or list of str
             The cell types for which to extract the marker genes.
+            The format should be tissue(dataset).cell_type
 
         background_cell_types: str or list of str, optional (default=None)
             The universe of cell types to consider. If not provided,
-            it defaults to all cell types in the SCFind object.
+            it defaults to all cell types in the SCFind object. The format should be
+            tissue(dataset).cell_type
 
         top_k: int, default=10
             How many genes to retrieve. Defaults to 10.
@@ -440,10 +452,10 @@ class SCFind:
 
         background_cell_types = list(background_cell_types_set)
 
-        cell_types_timestamp = self._select_celltype_timestamp(cell_types)
-        background_cell_types_timestamp = self._select_celltype_timestamp(background_cell_types)
+        cell_types_stamp = self._select_celltype_stamp(cell_types)
+        background_cell_types_stamp = self._select_celltype_stamp(background_cell_types)
 
-        all_cell_types = self.index.cellTypeMarkers(cell_types_timestamp, background_cell_types_timestamp)
+        all_cell_types = self.index.cellTypeMarkers(cell_types_stamp, background_cell_types_stamp)
         all_cell_types = pd.DataFrame(all_cell_types)
 
         if sort_field not in all_cell_types.keys():
@@ -473,16 +485,16 @@ class SCFind:
         -------
         List[str]
             A list of cell type names. If 'datasets' is provided, only the cell types
-            corresponding to the specified datasets will be returned.
+            corresponding to the specified datasets will be returned. The format is [tissue(dataset).cell_type]
         """
 
         if not self.index_exist:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
 
-        all_cell_types_timestamp = self.index.getCellTypes()
-        all_cell_types = [f"{name.split('_')[0]}.{name.split('.')[1]}" for name in all_cell_types_timestamp]
-        all_cell_types = list(set(all_cell_types))  # remove duplicate datasets distinguished by time stamp for better unstanding by users
+        all_cell_types_stamp = self.index.getCellTypes()
+        all_cell_types = [f"{name.split('_')[0]}.{name.split('.')[1]}" for name in all_cell_types_stamp]
+        all_cell_types = list(set(all_cell_types))  # remove duplicate datasets distinguished by stamp for better unstanding to users
 
         if datasets is None:
             return all_cell_types
@@ -512,11 +524,11 @@ class SCFind:
             Genes to be evaluated.
 
         cell_types: str or list of str
-            Cell types to be evaluated.
+            Cell types to be evaluated. The format should be tissue(dataset).cell_type
 
         background_cell_types: str or list of str, optional (default=None)
             The universe of cell types to consider. If not provided, all cell types
-            from the SCFind object will be considered.
+            from the SCFind object will be considered. The format should be tissue(dataset).cell_type
 
         sort_field: str, default='f1'
             The DataFrame will be sorted according to this field.
@@ -550,13 +562,13 @@ class SCFind:
 
         background_cell_types = list(background_cell_types_set)
 
-        cell_types_timestamp = self._select_celltype_timestamp(cell_types)
-        background_cell_types_timestamp = self._select_celltype_timestamp(background_cell_types)
+        cell_types_stamp = self._select_celltype_stamp(cell_types)
+        background_cell_types_stamp = self._select_celltype_stamp(background_cell_types)
 
         all_cell_types = self.index.evaluateCellTypeMarkers(
-            cell_types_timestamp,
+            cell_types_stamp,
             self._case_correct(gene_list),
-            background_cell_types_timestamp,
+            background_cell_types_stamp,
         )
         all_cell_types = pd.DataFrame(all_cell_types)
 
@@ -608,18 +620,20 @@ class SCFind:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
 
-        result = self.findCellTypes(gene_list, datasets)  # ids of each cellcell_timestamp
+        result = self.findCellTypes(gene_list, datasets)  # ids of each cellcell_stamp
         if result:
-            df = self._phyper_test(result)  # merge celltype by removing time stamp
-            df = df.sort_values(by='pval', ascending=True, ignore_index=True)
+            df = self._phyper_test(result)  # merge celltype by removing stamp
+            df = df.sort_values(by='adj-pval', ascending=True, ignore_index=True)
             if not include_prefix:
                 # Split the 'cell_type' column and keep only the suffix
                 df['cell_type'] = df['cell_type'].str.split('.').str[-1]
-            return df[df['pval']<0.05]
+            return df[df['adj-pval']<0.05]
         else:
             print("No Cell Is Found!")
             return pd.DataFrame({'cell_type': [], 'cell_hits': [],
-                                 'total_cells': [], 'pval': []})
+                                 'total_cells': [], 'pval': [],
+                                 'adj-pval': [],
+                                 })
 
     def findCellTypes(self,
                       gene_list: Union[str, List[str]],
@@ -651,7 +665,7 @@ class SCFind:
             object.buildCellTypeIndex().")
 
         datasets = self._select_datasets(datasets)
-        datasets_timestamp = [d for ds in datasets for d in self.datasets_map[ds]]
+        datasets_stamp = [d for ds in datasets for d in self.datasets_map[ds]]
 
         if isinstance(gene_list, str):
             gene_list = [gene_list]
@@ -664,7 +678,7 @@ class SCFind:
                 print(f"All input genes are not valid.")
                 return {}
             if all(isinstance(gene, str) for gene in sanitized_genes):
-                cts = self.index.findCellTypes(sanitized_genes, datasets_timestamp)
+                cts = self.index.findCellTypes(sanitized_genes, datasets_stamp)
                 # in python, index starts at 0
                 cts = {key: [cell_id - 1 for cell_id in value] for key, value in cts.items()}
                 return cts
@@ -709,19 +723,19 @@ class SCFind:
 
             cell_to_id = []
             if len(pos_genes) == 0 and len(or_genes) == 0 and (len(excl_genes) != 0 or len(excl_or_genes) != 0):
-                datasets_timestamp = [d for ds in datasets for d in self.datasets_map[ds]]
-                all_cell_types_timestamp = self.index.getCellTypes()
-                cell_types_timestamp = [ct for ct in all_cell_types_timestamp if ct.split('_')[0] in datasets]
-                cell_to_id = self.index.getCellTypeSupport(cell_types_timestamp, False)
+                datasets_stamp = [d for ds in datasets for d in self.datasets_map[ds]]
+                all_cell_types_stamp = self.index.getCellTypes()
+                cell_types_stamp = [ct for ct in all_cell_types_stamp if ct.split('_')[0] in datasets]
+                cell_to_id = self.index.getCellTypeSupport(cell_types_stamp, False)
                 cell_to_id = {name: list(range(cells)) for name, cells in 
-                              zip(cell_types_timestamp, cell_to_id)}
+                              zip(cell_types_stamp, cell_to_id)}
 
-                cell_to_id = SCFind._pair_id(cell_to_id)  # celltype_timestamp#id format
+                cell_to_id = SCFind._pair_id(cell_to_id)  # celltype_stamp#id format
 
             if len(or_genes) != 0:
                 gene_or = []
                 for i in range(len(or_genes)):
-                    tmp_id = SCFind._pair_id(self.index.findCellTypes(pos_genes + [or_genes[i]], datasets_timestamp))  # celltype_timestamp#id
+                    tmp_id = SCFind._pair_id(self.index.findCellTypes(pos_genes + [or_genes[i]], datasets_stamp))  # celltype_stamp#id
 
                     if len(pos_genes) != 0 and tmp_id is not None:
                         print(f"Found {len(tmp_id)} {'cells' if len(tmp_id) > 1 else 'cell'} co-expressing "
@@ -738,7 +752,7 @@ class SCFind:
                         f"{' or '.join(gene_or)}")
             else:
                 if len(pos_genes) != 0:
-                    cell_to_id = SCFind._pair_id(self.index.findCellTypes(pos_genes, datasets_timestamp))  #celltype_timestamp#id
+                    cell_to_id = SCFind._pair_id(self.index.findCellTypes(pos_genes, datasets_stamp))  #celltype_stamp#id
                     print(
                         f"Found {len(cell_to_id)} {'cells co-expressing' if len(pos_genes) > 1 else 'cell expressing'} "
                         f" {' and '.join(pos_genes)}")
@@ -749,7 +763,7 @@ class SCFind:
             if len(excl_or_genes) != 0:
                 # Negative select cell in OR condition
                 for i in range(len(excl_or_genes)):
-                    ex_tmp_id = SCFind._pair_id(self.index.findCellTypes(excl_genes + [excl_or_genes[i]], datasets_timestamp))
+                    ex_tmp_id = SCFind._pair_id(self.index.findCellTypes(excl_genes + [excl_or_genes[i]], datasets_stamp))
 
                     num_excluded = sum(item in ex_tmp_id for item in cell_to_id)
                     excl_message = f"Excluded {num_excluded} {'cells' if num_excluded > 1 else 'cell'}"
@@ -775,7 +789,7 @@ class SCFind:
                 if len(excl_genes) != 0:
                     # Negative selection
                     cell_to_id = list(
-                        set(cell_to_id) - set(SCFind._pair_id(self.index.findCellTypes(excl_genes, datasets_timestamp))))
+                        set(cell_to_id) - set(SCFind._pair_id(self.index.findCellTypes(excl_genes, datasets_stamp))))
                     count_cell -= len(cell_to_id)
                     if count_cell > 0:
                         excl_message = (
@@ -864,13 +878,13 @@ class SCFind:
         print("Calculating cell-types for each gene...")
 
         datasets = self._select_datasets(datasets)
-        datasets_timestamp = [d for ds in datasets for d in self.datasets_map[ds]]
+        datasets_stamp = [d for ds in datasets for d in self.datasets_map[ds]]
 
         if gene_list is None:
-            res = self.index.geneSupportInCellTypes(self.index.genes(), datasets_timestamp)
+            res = self.index.geneSupportInCellTypes(self.index.genes(), datasets_stamp)
         else:
             gene_list = self._case_correct(gene_list)
-            res = self.index.geneSupportInCellTypes(gene_list, datasets_timestamp)
+            res = self.index.geneSupportInCellTypes(gene_list, datasets_stamp)
 
         res_tissue = {key.replace(".", "#"): value for key, value in res.items()}
 
@@ -888,7 +902,7 @@ class SCFind:
         df = pd.concat([res_df, res_tissue_df], axis=1)
 
         df.iloc[:, 0] = df.iloc[:, 3].str.replace(r'^[^.]+\.', '', regex=True).apply(
-            lambda x: np.sum(self.index.getCellTypeSupport(self._select_celltype_timestamp(x), True)) * min_fraction)
+            lambda x: np.sum(self.index.getCellTypeSupport(self._select_celltype_stamp(x), True)) * min_fraction)
 
         df.loc[df.iloc[:, 0] < min_cells, df.columns[0]] = min_cells
 
@@ -927,12 +941,12 @@ class SCFind:
             raise ValueError("Index contains 1 dataset only. No need to detect genes in tissues (datasets).")
         print("Calculating tissues for each gene...")
 
-        datasets_timestamp = [d for ds in self.datasets_map.values() for d in ds]
+        datasets_stamp = [d for ds in self.datasets_map.values() for d in ds]
         if gene_list is None:
-            res = self.index.geneSupportInCellTypes(self.index.genes(), datasets_timestamp)
+            res = self.index.geneSupportInCellTypes(self.index.genes(), datasets_stamp)
         else:
             gene_list = self._case_correct(gene_list)
-            res = self.index.geneSupportInCellTypes(gene_list, datasets_timestamp)
+            res = self.index.geneSupportInCellTypes(gene_list, datasets_stamp)
 
         if not res:
             return {gene: 0 for gene in gene_list}
@@ -972,7 +986,7 @@ class SCFind:
         Parameters
         ----------
         cell_types: list of str
-            A list of cell types to be evaluated.
+            A list of cell types to be evaluated. The format should be tissue(dataset).cell_type
 
         min_recall: float, default=0.5
             Threshold of minimum recall value. Defaults to 0.5.
@@ -1063,9 +1077,9 @@ class SCFind:
         print("Searching for gene signatures...")
 
         if cell_types is None:
-            cell_types_all_timestamp = self.index.getCellTypes()
-            datasets = [d.split('_')[0] for d in cell_types_all_timestamp]
-            cts = [d.split('.')[1] for d in cell_types_all_timestamp]
+            cell_types_all_stamp = self.index.getCellTypes()
+            datasets = [d.split('_')[0] for d in cell_types_all_stamp]
+            cts = [d.split('.')[1] for d in cell_types_all_stamp]
             cell_types_all = list(set([f"{d}.{ct}" for d, ct in zip(datasets, cts)]))
 
         else:
@@ -1206,10 +1220,10 @@ class SCFind:
         else:
             valid_genes = self.scfindGenes
 
-        cell_type1_timestamp = self._select_celltype_timestamp(cell_type1)
-        cell_type2_timestamp = self._select_celltype_timestamp(cell_type2)
+        cell_type1_stamp = self._select_celltype_stamp(cell_type1)
+        cell_type2_stamp = self._select_celltype_stamp(cell_type2)
 
-        results = self.index.DEGenes(cell_type1_timestamp, cell_type2_timestamp, valid_genes, min_fraction)
+        results = self.index.DEGenes(cell_type1_stamp, cell_type2_stamp, valid_genes, min_fraction)
         if len(results) == 0:
             print("No significant genes identified between given cell types.")
             return pd.DataFrame(
@@ -1251,7 +1265,8 @@ class SCFind:
 
     @staticmethod
     def _buildCellTypeIndex(adata: AnnData,
-                            dataset_name: str,
+                            dataset_id: str,
+                            tissue: str,
                             feature_name: str = 'feature_name',
                             cell_type_label: str = 'cell_type',
                             qb: int = 2,
@@ -1265,8 +1280,11 @@ class SCFind:
             The annotated data matrix of shape (n_obs, n_vars). Rows correspond to cells
             and columns to genes.
 
-        dataset_name: str
-            Name of the dataset.
+        dataset_id: str
+            Dataset ID obtained from HuBMAP.
+
+        tissue: str
+            Tissue name.
 
         feature_name: str, default='feature_name'
             The label or key in the AnnData object's variables (var) that corresponds to the feature names.
@@ -1284,7 +1302,8 @@ class SCFind:
         scf_object = SCFind()
         scf_object.buildCellTypeIndex(
             adata=adata, 
-            dataset_name=dataset_name, 
+            dataset_id=dataset_id,
+            tissue=tissue,
             feature_name=feature_name, 
             cell_type_label=cell_type_label, 
             qb=qb)
@@ -1326,20 +1345,20 @@ class SCFind:
 
         return datasets
     
-    def _select_celltype_timestamp(self,
-                                   cell_type: Union[str, List[str]] = None,
-                                   ):
+    def _select_celltype_stamp(self,
+                               cell_type: Union[str, List[str]] = None,
+                               ):
         """
-        Select dataset_timestamp.celltype for inputcell_type (dataset.cell_type)
+        Select dataset_name_stamp.celltype for input cell_type (format: dataset.cell_type)
 
         Parameters
         ----------
         cell_type: string or list of strings, optional
-            List of cell types without time stamp
+            List of cell types without stamp
         
         Returns
         -------
-            List of cell types with time stamp
+            List of cell types with stamp
 
         Raises
         ------
@@ -1347,8 +1366,8 @@ class SCFind:
             If none of the specified datasets exists in the available datasets list.
         """
         if cell_type is None:
-            cell_type_timestamp = self.index.getCellTypes()
-            return cell_type_timestamp
+            cell_type_stamp = self.index.getCellTypes()
+            return cell_type_stamp
 
         if isinstance(cell_type, str):
             cell_type = [cell_type]
@@ -1358,11 +1377,11 @@ class SCFind:
 
         cts = [ct.split('.')[1] for ct in cell_type]
 
-        dataset_timestamp = [d for ds in datasets for d in self.datasets_map[ds]]
-        cell_type_timestamp = self.index.getCellTypes()
-        filter_cell_type_timestamp = [ct for ct in cell_type_timestamp if ct.split('.')[1] in cts and ct.split('.')[0] in dataset_timestamp]
+        dataset_stamp = [d for ds in datasets for d in self.datasets_map[ds]]
+        cell_type_stamp = self.index.getCellTypes()
+        filter_cell_type_stamp = [ct for ct in cell_type_stamp if ct.split('.')[1] in cts and ct.split('.')[0] in dataset_stamp]
 
-        return filter_cell_type_timestamp
+        return filter_cell_type_stamp
 
     def _case_correct(self,
                       gene_list: Union[str, List[str]],
@@ -1444,7 +1463,7 @@ class SCFind:
         Parameters
         ----------
         cell_type: str
-            Cell type name without time stamp.
+            Cell type name without stamp.
 
         max_genes: int, default=1000
             The maximum number of genes. Default is 1000.
@@ -1463,8 +1482,8 @@ class SCFind:
         df = self.cellTypeMarkers([cell_type], top_k=max_genes, sort_field="recall")
         genes = [str(gene) for gene in df['genes']]
         genes_list = []
-        cell_type_timestamp = self._select_celltype_timestamp(cell_type)
-        total_cells = np.sum([self.index.getCellTypeMeta(ct)['total_cells'] for ct in cell_type_timestamp])
+        cell_type_stamp = self._select_celltype_stamp(cell_type)
+        total_cells = np.sum([self.index.getCellTypeMeta(ct)['total_cells'] for ct in cell_type_stamp])
         thres = max(min_cells, total_cells)
 
         for j in range(len(df)):
@@ -1504,14 +1523,14 @@ class SCFind:
         # Convert the result to a dataframe
         df = self._result_to_dataframe(result)
 
-        # Aggregate by cell_type_timestamp
+        # Aggregate by cell_type_stamp
         cell_types_df = df.groupby('cell_type').size().reset_index(name='cell_hits')
         cell_types_df['cell_type'] = cell_types_df['cell_type'].str.split('_').str[0] + "." + cell_types_df['cell_type'].str.split('.').str[1]
         cell_types_df = cell_types_df.groupby('cell_type', as_index=False)['cell_hits'].sum()
 
 
         # Get total_cells for each cell type
-        cell_types_df['total_cells'] = cell_types_df['cell_type'].apply(lambda x: np.sum(self.index.getCellTypeSupport(self._select_celltype_timestamp(x), True)))
+        cell_types_df['total_cells'] = cell_types_df['cell_type'].apply(lambda x: np.sum(self.index.getCellTypeSupport(self._select_celltype_stamp(x), True)))
 
         query_hits = len(df)
 
@@ -1525,7 +1544,7 @@ class SCFind:
 
         # Adjust p-values using Holm adjustment method
         adjusted_pvals = multipletests(cell_types_df['pval'], method='holm')[1]
-        cell_types_df['pval'] = adjusted_pvals
+        cell_types_df['adj-pval'] = adjusted_pvals
 
         return cell_types_df
 
