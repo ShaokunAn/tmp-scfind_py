@@ -903,16 +903,15 @@ class SCFind:
 
         df = pd.concat([res_df, res_tissue_df], axis=1)
 
-        df.iloc[:, 0] = df.iloc[:, 3].str.replace(r'^[^.]+\.', '', regex=True).apply(
-            lambda x: np.sum(self.index.getCellTypeSupport(self._select_celltype_stamp(x), True)) * min_fraction)
+        if df.empty:
+            return {gene: [0] for gene in gene_list}
+        else:
+            df.iloc[:, 0] = df.iloc[:, 3].str.replace(r'^[^.]+\.', '', regex=True).apply(
+                lambda x: np.sum(self.index.getCellTypeSupport(self._select_celltype_stamp(x), True)) * min_fraction)
 
-        df.loc[df.iloc[:, 0] < min_cells, df.columns[0]] = min_cells
-
-        if not df.empty:
+            df.loc[df.iloc[:, 0] < min_cells, df.columns[0]] = min_cells
             df = df[df.iloc[:, 2] > df.iloc[:, 0]]
             return df.iloc[:, 1].value_counts().to_dict()
-        else:
-            return {gene: [0] for gene in gene_list}
 
     def findTissueSpecificities(self,
                                 gene_list: Optional[Union[str, List[str]]] = None,
