@@ -112,6 +112,10 @@ class SCFind:
             cell_type_exp = cell_type_exp.astype(np.float64)
             # Convert python matrix into
             if is_sparse:
+                # Ensure the sparse matrix is csr format
+                if not scipy.sparse.isspmatrix_csr(cell_type_exp):
+                    cell_type_exp = cell_type_exp.tocsr()
+
                 ef.indexMatrix(new_cell_types[cell_type], cell_type_exp, cell_type_genes)
             else:
                 ef.indexMatrix_dense(new_cell_types[cell_type], cell_type_exp, cell_type_genes)
