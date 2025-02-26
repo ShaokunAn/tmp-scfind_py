@@ -26,6 +26,7 @@ class SCFind:
         self.metadata = {}
         self.index_exist = False
         self.datasets_map = {}
+        self.datasetID_map = pd.DataFrame(columns=['dataset_id'])
 
     def buildCellTypeIndex(self, adata: AnnData,
                            dataset_id: str,
@@ -72,6 +73,9 @@ class SCFind:
         # Use id to separate dataset_id and tissue
         dataset_id_modified = dataset_id.replace('.', '-')  # use - to replace . in dataset_id
         dataset_id_modified = dataset_id_modified.replace('_', '-')
+        dataset_index = len(self.datasetID_map)
+        self.datasetID_map = pd.concat([self.datasetID_map, pd.DataFrame({'dataset_id': [dataset_id_modified]})],
+                                       ignore_index=True)
         # Get cell types
         try:
             cell_types_all = adata.obs[cell_type_label].astype('category')
@@ -82,8 +86,9 @@ class SCFind:
         # Assuming tissue and cell_types are already defined, and use dataset_id as stamp to distinguish datasets
         tissue_modified = tissue.replace('.', '-')
         tissue_modified = tissue_modified.replace('_', '-')
-        dataset_name_stamp = f"{tissue_modified}_{dataset_id_modified}"
-        new_cell_types = {cell_type: f"{dataset_name_stamp}.{cell_type}" for cell_type in cell_types}
+        dataset_id_stamp = f"{tissue_modified}_{dataset_index}"
+        new_cell_types = {cell_type: f"{dataset_id_stamp}.{cell_type}" for cell_type in cell_types}
+        dataset_name_stamp = self.datasetID_map.iloc[dataset_index]['dataset_id']
 
         if len(cell_types) == 0:
             raise ValueError("No cell types found in the provided AnnData object.")
@@ -159,6 +164,7 @@ class SCFind:
                         'datasets': self.datasets,
                         'metadata': self.metadata,
                         'datasets_map': self.datasets_map,
+                        'datasetID_map': self.datasetID_map,
                         }
 
         # Save the serialized object to a file
@@ -205,6 +211,7 @@ class SCFind:
         self.index_exist = True
         self.metadata = loaded_object['metadata']
         self.datasets_map = loaded_object['datasets_map']
+        self.datasetID_map = loaded_object['datasetID_map']
 
     def mergeDataset(self, new_object: 'SCFind') -> None:
         """

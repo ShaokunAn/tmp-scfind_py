@@ -5,6 +5,7 @@
 #include <functional>
 #include <exception>
 #include <stdexcept>
+//#include <chrono>
 
 #include "EliasFano.h"
 #include "Serialization.h"
@@ -1010,6 +1011,7 @@ py::dict EliasFanoDB::_findCellTypeMarkers(const py::list &cell_types, const py:
 
   // Identify dataset.celltype with same biological meanings by removing time stamp
   std::unordered_map<std::string, std::vector<std::string>> same_cts;
+//  auto start = std::chrono::high_resolution_clock::now();
   for (const std::string& ctTimeStamp : cts){
     std::string dataset = ctTimeStamp.substr(0, ctTimeStamp.find('_'));
     std::string ct = ctTimeStamp.substr(ctTimeStamp.find('.'));
@@ -1017,29 +1019,40 @@ py::dict EliasFanoDB::_findCellTypeMarkers(const py::list &cell_types, const py:
     
     same_cts[datasetCt].push_back(ctTimeStamp);
   }
+//  auto end = std::chrono::high_resolution_clock::now();
+//  std::chrono::duration<double, std::milli> duration = end - start;
+//  std::cout << "Execution time of summarize dataset.celltype: " << duration.count()/1000 << " s" << std::endl;
 
+//  auto start1 = std::chrono::high_resolution_clock::now();
   for (const auto &entry : same_cts){
     const std::vector<std::string> &cts = entry.second;
-    std::unordered_map<GeneName, std::array<int, 4>> marker_genes_cts;
+//    std::unordered_map<GeneName, std::array<int, 4>> marker_genes_cts;
     // std::vector<std::pair<std::string, CellTypeMarker>> marker_genes_cts_score;
+    std::unordered_map<GeneName, std::tuple<int, int, int, int>> marker_genes_cts;
+    marker_genes_cts = this->_cellTypeCount_simplified(cts, bk_cts, gene_set, mode);
 
-    for (const auto &ct : cts) {
-      auto marker_gene = this->_cellTypeCount(ct, bk_cts, gene_set, mode);
-      
-      for (const auto& t : marker_gene) {
-        marker_genes_cts[t.first][0] = std::get<0>(t.second);
-        marker_genes_cts[t.first][1] = std::get<1>(t.second);
-        marker_genes_cts[t.first][2] += std::get<2>(t.second);
-        marker_genes_cts[t.first][3] += std::get<3>(t.second);
-      }
-
-    }
+//    for (const auto &ct : cts) {
+//      auto marker_gene = this->_cellTypeCount(ct, bk_cts, gene_set, mode);
+//
+//      for (const auto& t : marker_gene) {
+//        marker_genes_cts[t.first][0] = std::get<0>(t.second);
+//        marker_genes_cts[t.first][1] = std::get<1>(t.second);
+//        marker_genes_cts[t.first][2] += std::get<2>(t.second);
+//        marker_genes_cts[t.first][3] += std::get<3>(t.second);
+//      }
+//
+//    }
 
     for (const auto& t : marker_genes_cts) {
-      int tp_val = t.second[3];
-      int fp_val = t.second[1] - tp_val;
-      int tn_val = t.second[0] - fp_val - t.second[2];
-      int fn_val = t.second[2] - tp_val;
+//      int tp_val = t.second[3];
+//      int fp_val = t.second[1] - tp_val;
+//      int tn_val = t.second[0] - fp_val - t.second[2];
+//      int fn_val = t.second[2] - tp_val;
+
+      int tp_val = std::get<3>(t.second);
+      int fp_val = std::get<1>(t.second) - tp_val;
+      int tn_val = std::get<0>(t.second) - fp_val - std::get<2>(t.second);
+      int fn_val = std::get<2>(t.second) - tp_val;
       
       if (tp_val == 0)
       {
@@ -1062,6 +1075,10 @@ py::dict EliasFanoDB::_findCellTypeMarkers(const py::list &cell_types, const py:
       f1.push_back(score.f1());
     }
   }
+
+//  auto end1 = std::chrono::high_resolution_clock::now();
+//  std::chrono::duration<double, std::milli> duration1 = end1 - start1;
+//  std::cout << "Execution time of performing markers: " << duration1.count()/1000 << " s" << std::endl;
 
   py::dict result;
   result["cellType"] = py::cast(df_cell_type);
@@ -1093,7 +1110,7 @@ py::dict EliasFanoDB::evaluateCellTypeMarkers(const py::list &cell_types,
 std::unordered_map<EliasFanoDB::GeneName, std::tuple<int, int, int, int>> EliasFanoDB::_cellTypeCount(const std::string &cell_type, const std::vector<std::string> &universe, const std::vector<EliasFanoDB::GeneName> &gene_names, int mode) const
 {
   auto ct_it = this->cell_types.find(cell_type);
-  if (ct_it == this->cell_types.end())
+    if (ct_it == this->cell_types.end())
   {
     std::cerr << "Cell type " << cell_type << " not found. exiting..." << std::endl;
     return std::unordered_map<std::string, std::tuple<int, int, int, int>>();
@@ -1160,6 +1177,81 @@ std::unordered_map<EliasFanoDB::GeneName, std::tuple<int, int, int, int>> EliasF
       
     }
   }
+  return results;
+}
+
+std::unordered_map<EliasFanoDB::GeneName, std::tuple<int, int, int, int>> EliasFanoDB::_cellTypeCount_simplified(const std::vector<std::string> &cell_types, const std::vector<std::string> &universe, const std::vector<EliasFanoDB::GeneName> &gene_names, int mode) const
+{
+  // Calculate background universe total cells
+  const auto active_cell_types = this->_getValidCellTypes(universe);
+  const std::deque<CellType> &all_cts = this->inverse_cell_type;
+  const CellTypeIndex &cts_index = this->cell_types;
+  const int act_total_cells = std::accumulate(active_cell_types.begin(),
+                                              active_cell_types.end(),
+                                              0,
+                                              [&all_cts, &cts_index](const int &sum, const CellTypeName &name)
+                                              {
+                                                const auto ct_id = cts_index.find(name);
+                                                return sum + all_cts[ct_id->second].total_cells;
+                                              });
+
+  std::unordered_map<std::string, std::tuple<int, int, int, int>> results;
+
+  int total_cells_in_cts = 0;
+  for (auto const &cell_type : cell_types)
+  {
+    auto ct_it = this->cell_types.find(cell_type);
+    if (ct_it == this->cell_types.end())
+    {
+      std::cerr << "Cell type " << cell_type << " not found. exiting..." << std::endl;
+      return std::unordered_map<std::string, std::tuple<int, int, int, int>>();
+    }
+
+    const CellTypeID cell_type_id = ct_it->second;
+    total_cells_in_cts += this->inverse_cell_type[cell_type_id].total_cells;
+  }
+
+  if (mode == ALL)
+    {
+      for (auto const &gene_name : gene_names)
+      {
+        const auto index_it = this->index.find(gene_name);
+        if (index_it == this->index.end())
+        {
+          std::cerr << "Gene " << gene_name << " not found in the database, Ignoring... " << std::endl;
+          continue;
+        }
+
+        const auto &gene_entry = *index_it;
+        int cells_in_cts = 0;
+        for (auto const &cell_type : cell_types)
+        {
+          auto ct_it = this->cell_types.find(cell_type);
+          const CellTypeID cell_type_id = ct_it->second;
+          auto ctm = gene_entry.second.find(cell_type_id);
+          if (ctm != gene_entry.second.end())
+          {
+            const EliasFano &ex_vec = this->ef_data[ctm->second];
+            cells_in_cts += ex_vec.getSize();
+          }
+        }
+
+        int gene_bkg_pt = 0;
+        for (auto const &ct : gene_entry.second)
+        {
+          auto bct_it = active_cell_types.find(all_cts[ct.first].name);
+          // if we are not interested in the cell type continue
+          if (bct_it == active_cell_types.end())
+          {
+            continue;
+          }
+          int bkg_cell_number = this->ef_data[ct.second].getSize();
+          gene_bkg_pt += bkg_cell_number;
+        }
+        results[gene_name] = std::make_tuple(act_total_cells, gene_bkg_pt, total_cells_in_cts, cells_in_cts);
+      }
+  }
+
   return results;
 }
 

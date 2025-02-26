@@ -143,6 +143,7 @@ class EliasFanoDB
   // std::map<GeneName, CellTypeMarker> _cellTypeScore(const std::string& cell_type, const std::vector<std::string>& universe, const std::vector <GeneName>&, int mode = ALL) const;
 
   std::unordered_map<GeneName, std::tuple<int, int, int, int>> _cellTypeCount(const std::string &cell_type, const std::vector<std::string> &universe, const std::vector<GeneName> &gene_names, int mode = ALL) const;
+  std::unordered_map<GeneName, std::tuple<int, int, int, int>> _cellTypeCount_simplified(const std::vector<std::string> &cell_types, const std::vector<std::string> &universe, const std::vector<GeneName> &gene_names, int mode = ALL) const;
 
   const std::set<std::string> _getValidCellTypes(std::vector<std::string> universe) const;
 
