@@ -31,6 +31,7 @@ class SCFind:
     def buildCellTypeIndex(self, adata: AnnData,
                            dataset_id: str,
                            tissue: str,
+                           dataset_index: Optional[int] = None,
                            feature_name: str = 'gene',
                            cell_type_label: str = 'cell_type',
                            qb: int = 2
@@ -46,6 +47,11 @@ class SCFind:
 
         dataset_id: str
             Dataset ID obtained from HuBMAP.
+
+        dataset_index: Optional[int], default=None
+            Index of the dataset in the SCFind object. If not provided, it will be set as 0.
+            This is used to update index for HuBMAP dataset. By checking the number of datasets in old index,
+            we can set the index of the new dataset to distinguish duplicate cell types.
 
         tissue: str
             Tissue name.
@@ -73,7 +79,9 @@ class SCFind:
         # Use id to separate dataset_id and tissue
         dataset_id_modified = dataset_id.replace('.', '-')  # use - to replace . in dataset_id
         dataset_id_modified = dataset_id_modified.replace('_', '-')
-        dataset_index = len(self.datasetID_map)
+        if dataset_index is None:
+            dataset_index = 0
+
         self.datasetID_map = pd.concat([self.datasetID_map, pd.DataFrame({'dataset_id': [dataset_id_modified]})],
                                        ignore_index=True)
         # Get cell types
@@ -250,8 +258,27 @@ class SCFind:
             for d in new_datasets:
                 self.datasets_map[d] = new_object.datasets_map[d]
 
-        print(f"Merging {new_object.datasets}")
+        # Update datasets_map
+        all_datasets = set(self.datasets).union(new_object.datasets)
+        for d in all_datasets:
+            if d not in self.datasets_map:
+                self.datasets_map[d] = new_object.datasets_map[d]
+            else:
+                if set(self.datasets_map[d]).intersection(new_object.datasets_map[d]):
+                    raise ValueError(f"Error: {d} already exists in self.datasets_map")
 
+                self.datasets_map[d].extend(new_object.datasets_map[d])
+
+        # Update datasetID_map
+        duplicate_dataset_index = set(self.datasetID_map.index).intersection(new_object.datasetID_map.index)
+        if duplicate_dataset_index:
+            raise ValueError(f"Error: duplicate dataset index in mapping: {duplicate_dataset_index}")
+
+        self.datasetID_map = pd.concat(
+            [self.datasetID_map, new_object.datasetID_map], ignore_index=False
+        )
+
+        print(f"Merging {new_object.datasets} ... ")
         self.index.mergeDB(new_object.index)
 
     def mergeAnnData(self, adata: AnnData,
@@ -296,10 +323,13 @@ class SCFind:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
 
+        dataset_index = len(self.datasetID_map)
+
         new_object = SCFind()._buildCellTypeIndex(
             adata=adata,
             dataset_id=dataset_id,
             tissue=tissue,
+            dataset_index=dataset_index,
             feature_name=feature_name,
             cell_type_label=cell_type_label,
             qb=qb,
@@ -1278,6 +1308,7 @@ class SCFind:
     def _buildCellTypeIndex(adata: AnnData,
                             dataset_id: str,
                             tissue: str,
+                            dataset_index: Optional[int] = None,
                             feature_name: str = 'feature_name',
                             cell_type_label: str = 'cell_type',
                             qb: int = 2,
@@ -1297,6 +1328,11 @@ class SCFind:
         tissue: str
             Tissue name.
 
+        dataset_index: Optional[int], default=None
+            Index of the dataset in the SCFind object. If not provided, it will be set as 0.
+            This is used to update index for HuBMAP dataset. By checking the number of datasets in old index,
+            we can set the index of the new dataset to distinguish duplicate cell types.
+
         feature_name: str, default='feature_name'
             The label or key in the AnnData object's variables (var) that corresponds to the feature names.
 
@@ -1315,6 +1351,7 @@ class SCFind:
             adata=adata, 
             dataset_id=dataset_id,
             tissue=tissue,
+            dataset_index=dataset_index,
             feature_name=feature_name, 
             cell_type_label=cell_type_label, 
             qb=qb)
