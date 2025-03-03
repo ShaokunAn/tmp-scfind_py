@@ -241,8 +241,10 @@ class SCFind:
         if not self.index_exist:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
+
         # Update datasets_map
         all_datasets = set(self.datasets).union(new_object.datasets)
+        self.datasets = all_datasets
         for d in all_datasets:
             if d not in self.datasets_map:
                 self.datasets_map[d] = new_object.datasets_map[d]
