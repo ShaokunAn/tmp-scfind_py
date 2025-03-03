@@ -247,7 +247,7 @@ class SCFind:
             if d not in self.datasets_map:
                 self.datasets_map[d] = new_object.datasets_map[d]
             else:
-                intersection = set(self.datasets_map[d]).intersection(new_object.datasets_map[d])
+                intersection = set(self.datasets_map.get(d, [])).intersection(new_object.datasets_map.get(d, []))
                 if intersection:
                     raise ValueError(f"Error: {intersection} already exists in current index."
                                      f"Not allowed to update index with duplicated datasets.")
