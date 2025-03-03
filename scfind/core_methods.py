@@ -9,7 +9,6 @@ from anndata import AnnData
 import anndata as ad
 from scipy.sparse import csr_matrix
 from scipy.stats import hypergeom
-from scipy import stats
 from statsmodels.stats.multitest import multipletests
 from tqdm import tqdm
 
@@ -82,8 +81,7 @@ class SCFind:
         if dataset_index is None:
             dataset_index = 0
 
-        self.datasetID_map = pd.concat([self.datasetID_map, pd.DataFrame({'dataset_id': [dataset_id_modified]})],
-                                       ignore_index=True)
+        self.datasetID_map = pd.DataFrame({'dataset_id': [dataset_id_modified]}, index=[dataset_index])
         # Get cell types
         try:
             cell_types_all = adata.obs[cell_type_label].astype('category')
@@ -96,12 +94,11 @@ class SCFind:
         tissue_modified = tissue_modified.replace('_', '-')
         dataset_id_stamp = f"{tissue_modified}_{dataset_index}"
         new_cell_types = {cell_type: f"{dataset_id_stamp}.{cell_type}" for cell_type in cell_types}
-        dataset_name_stamp = self.datasetID_map.loc[dataset_index]['dataset_id']
 
         if len(cell_types) == 0:
             raise ValueError("No cell types found in the provided AnnData object.")
 
-        print(f"Generating index for {dataset_name_stamp}")
+        print(f"Generating index for {dataset_id_modified}")
 
         non_zero_cell_types = []
         # Get expression data
@@ -139,7 +136,7 @@ class SCFind:
 
         self.index = ef
         self.datasets = [tissue_modified]
-        self.datasets_map[tissue_modified] = [dataset_name_stamp]
+        self.datasets_map[tissue_modified] = [dataset_id_modified]
         self.index_exist = True
 
     def saveObject(self, file: str) -> None:
@@ -244,28 +241,16 @@ class SCFind:
         if not self.index_exist:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
-
-        common_datasets = set(self.datasets).intersection(new_object.datasets)
-        new_datasets = set(new_object.datasets).difference(common_datasets)
-
-        # merge same dataset (distinguished by stamp)
-        if common_datasets:
-            for d in common_datasets:
-                self.datasets_map[d].extend(new_object.datasets_map[d])
-        # add new items into self.datasets_map for new datasets
-        if new_datasets:
-            self.datasets.extend(list(new_datasets))
-            for d in new_datasets:
-                self.datasets_map[d] = new_object.datasets_map[d]
-
         # Update datasets_map
         all_datasets = set(self.datasets).union(new_object.datasets)
         for d in all_datasets:
             if d not in self.datasets_map:
                 self.datasets_map[d] = new_object.datasets_map[d]
             else:
-                if set(self.datasets_map[d]).intersection(new_object.datasets_map[d]):
-                    raise ValueError(f"Error: {d} already exists in self.datasets_map")
+                intersection = set(self.datasets_map[d]).intersection(new_object.datasets_map[d])
+                if intersection:
+                    raise ValueError(f"Error: {intersection} already exists in current index."
+                                     f"Not allowed to update index with duplicated datasets.")
 
                 self.datasets_map[d].extend(new_object.datasets_map[d])
 
@@ -1352,7 +1337,7 @@ class SCFind:
             dataset_id=dataset_id,
             tissue=tissue,
             dataset_index=dataset_index,
-            feature_name=feature_name, 
+            feature_name=feature_name,
             cell_type_label=cell_type_label, 
             qb=qb)
         return scf_object
