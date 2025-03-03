@@ -1414,9 +1414,9 @@ class SCFind:
 
         dataset_stamp = [d for ds in datasets for d in self.datasets_map[ds]]
         dataset_id = self.datasetID_map['dataset_id'].isin(dataset_stamp)
-        dataset_id = self.datasetID_map[dataset_id].index
+        dataset_id = self.datasetID_map[dataset_id].index.astype(str)
         cell_type_stamp = self.index.getCellTypes()
-        filter_cell_type_stamp = [ct for ct in cell_type_stamp if ct.split('.')[1] in cts and ct.split('.')[0] in dataset_id]
+        filter_cell_type_stamp = [ct for ct in cell_type_stamp if ct.split('.')[1] in cts and ct.split('.')[0].split('_')[1] in dataset_id]
 
         return filter_cell_type_stamp
 
