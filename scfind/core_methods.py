@@ -96,7 +96,7 @@ class SCFind:
         tissue_modified = tissue_modified.replace('_', '-')
         dataset_id_stamp = f"{tissue_modified}_{dataset_index}"
         new_cell_types = {cell_type: f"{dataset_id_stamp}.{cell_type}" for cell_type in cell_types}
-        dataset_name_stamp = self.datasetID_map.iloc[dataset_index]['dataset_id']
+        dataset_name_stamp = self.datasetID_map.loc[dataset_index]['dataset_id']
 
         if len(cell_types) == 0:
             raise ValueError("No cell types found in the provided AnnData object.")
