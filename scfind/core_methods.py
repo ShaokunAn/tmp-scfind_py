@@ -252,7 +252,7 @@ class SCFind:
                     raise ValueError(f"Error: {intersection} already exists in current index."
                                      f"Not allowed to update index with duplicated datasets.")
 
-                self.datasets_map[d].extend(new_object.datasets_map[d])
+                self.datasets_map[d].extend(new_object.datasets_map.get(d, []))
 
         # Update datasetID_map
         duplicate_dataset_index = set(self.datasetID_map.index).intersection(new_object.datasetID_map.index)
