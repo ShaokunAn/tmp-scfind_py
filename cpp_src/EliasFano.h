@@ -65,6 +65,8 @@ class EliasFanoDB
 
   py::bytes getByteStream() const;
 
+  
+  long eliasFanoCodingNoExpr(const std::vector<int> &ids, int total_cells);
   long eliasFanoCoding(const std::vector<int>& ids, const std::vector<double> &values);
 
   std::vector<int> eliasFanoDecoding(const EliasFano& ef) const;
@@ -100,7 +102,7 @@ class EliasFanoDB
 
   CellTypeIndex getCellTypeIDs(const std::set<std::string>& datasets) const;
 
-  py::list getCellTypeSupport(py::list& cell_types, bool is_merge = true);
+  py::list getCellTypeSupport(py::list& cell_types);
 
   py::dict queryGenes(const py::list& gene_names, const py::list& datasets_active) const;
 
@@ -140,10 +142,8 @@ class EliasFanoDB
 
 
 
-  // std::map<GeneName, CellTypeMarker> _cellTypeScore(const std::string& cell_type, const std::vector<std::string>& universe, const std::vector <GeneName>&, int mode = ALL) const;
+  std::map<GeneName, CellTypeMarker> _cellTypeScore(const std::string& cell_type, const std::vector<std::string>& universe, const std::vector <GeneName>&, int mode = ALL) const;
 
-  std::unordered_map<GeneName, std::tuple<int, int, int, int>> _cellTypeCount(const std::string &cell_type, const std::vector<std::string> &universe, const std::vector<GeneName> &gene_names, int mode = ALL) const;
-  std::unordered_map<GeneName, std::tuple<int, int, int, int>> _cellTypeCount_simplified(const std::vector<std::string> &cell_types, const std::vector<std::string> &universe, const std::vector<GeneName> &gene_names, int mode = ALL) const;
 
   const std::set<std::string> _getValidCellTypes(std::vector<std::string> universe) const;
 
@@ -170,6 +170,8 @@ class EliasFanoDB
 
   int mergeDB(const EliasFanoDB& db);
 
+  void updateEliasFanoNoExpr(EliasFano& ef, const std::vector<int>& ids, int total_cells);
+  int updateDB(const EliasFanoDB &db);
   std::vector<py::dict> DEGenes(const py::list &ct1, const py::list &ct2, const py::list genes_obj, const double &min_fraction);
 
 

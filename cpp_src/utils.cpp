@@ -31,11 +31,22 @@ Quantile lognormalcdf(const std::vector<int>& ids, const std::vector<double>& v_
 //    double* v_ptr = static_cast<double*>(v_info.ptr);
 
     std::function<double(const double&)> expr_tran = raw_counts ? [](const double& x) {return std::log(x + 1);}: [](const double& x){return x;};
+    std::cout<<"after expr_tran"<<std::endl;
+
+    for (const int& id : ids) {
+      if (id <= 0 || id > v_array.size()) {
+          std::cerr << "Error: Invalid index " << id << " (valid range: 1-" << v_array.size() 
+                    << ") in lognormalcdf" << std::endl;
+          return Quantile(); // 或者抛出异常
+      }
+  }
+  
 
     Quantile expr;
     expr.mu = std::accumulate(ids.begin(), ids.end(), 0.0, [&v_array, &expr_tran](const double& mean, const int& index){
         return mean + expr_tran(v_array[index - 1]);
     }) / ids.size();
+    std::cout<<"after calculating expr.mu"<<std::endl;
 
     expr.sigma = std::sqrt(
         std::accumulate(
@@ -45,6 +56,7 @@ Quantile lognormalcdf(const std::vector<int>& ids, const std::vector<double>& v_
             [&v_array, &expr, &expr_tran](const double& variance, const int& index){
                 return std::pow(expr.mu - expr_tran(v_array[index - 1]), 2);
             }) / ids.size());
+    std::cout<<"after calculating expr.sigma"<<std::endl;
 
     expr.quantile.resize(ids.size() * bits, 0);
     int expr_quantile_i = 0;

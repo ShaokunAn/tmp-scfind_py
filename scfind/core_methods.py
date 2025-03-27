@@ -1,4 +1,6 @@
+from hmac import new
 import pickle
+import types
 from typing import List, Optional, Union, Dict
 
 import numpy as np
@@ -20,17 +22,16 @@ class SCFind:
         super().__init__()
 
         self.index = EliasFanoDB()
-        self.datasets = []
+        self.datasets = [] # tissue name
         self.serialized = bytes()
-        self.metadata = {}
+        # self.metadata will store {datasetID: celltype} for normal index, 
+        # and keep empty for index with HuBMAP datasetID 
+        self.metadata = {}  
         self.index_exist = False
-        self.datasets_map = {}
-        self.datasetID_map = pd.DataFrame(columns=['dataset_id'])
 
     def buildCellTypeIndex(self, adata: AnnData,
-                           dataset_id: str,
                            tissue: str,
-                           dataset_index: Optional[int] = None,
+                           dataset_id: str,
                            feature_name: str = 'gene',
                            cell_type_label: str = 'cell_type',
                            qb: int = 2
@@ -44,16 +45,11 @@ class SCFind:
             The annotated data matrix of shape (n_obs, n_vars). Rows correspond to cells
             and columns to genes.
 
-        dataset_id: str
-            Dataset ID obtained from HuBMAP.
-
-        dataset_index: Optional[int], default=None
-            Index of the dataset in the SCFind object. If not provided, it will be set as 0.
-            This is used to update index for HuBMAP dataset. By checking the number of datasets in old index,
-            we can set the index of the new dataset to distinguish duplicate cell types.
-
         tissue: str
             Tissue name.
+        
+        dataset_id: str
+            Dataset ID obtained from HuBMAP.
 
         feature_name: str, default='gene'
             The label or key in the AnnData object's variables (var) that corresponds to the feature names.
@@ -75,13 +71,6 @@ class SCFind:
             If dataset_id contains any dots or if assay_name is not found in the AnnData object.
         """
 
-        # Use id to separate dataset_id and tissue
-        dataset_id_modified = dataset_id.replace('.', '-')  # use - to replace . in dataset_id
-        dataset_id_modified = dataset_id_modified.replace('_', '-')
-        if dataset_index is None:
-            dataset_index = 0
-
-        self.datasetID_map = pd.DataFrame({'dataset_id': [dataset_id_modified]}, index=[dataset_index])
         # Get cell types
         try:
             cell_types_all = adata.obs[cell_type_label].astype('category')
@@ -89,16 +78,14 @@ class SCFind:
             raise ValueError(f"'{cell_type_label}' not found in adata.obs.")
 
         cell_types = cell_types_all.cat.categories.tolist()
-        # Assuming tissue and cell_types are already defined, and use dataset_id as stamp to distinguish datasets
+        # Assuming tissue and cell_types are already defined
         tissue_modified = tissue.replace('.', '-')
-        tissue_modified = tissue_modified.replace('_', '-')
-        dataset_id_stamp = f"{tissue_modified}_{dataset_index}"
-        new_cell_types = {cell_type: f"{dataset_id_stamp}.{cell_type}" for cell_type in cell_types}
+        new_cell_types = {cell_type: f"{tissue_modified}.{cell_type}" for cell_type in cell_types}
 
         if len(cell_types) == 0:
             raise ValueError("No cell types found in the provided AnnData object.")
 
-        print(f"Generating index for {dataset_id_modified}")
+        print(f"Generating index for {tissue_modified}")
 
         non_zero_cell_types = []
         # Get expression data
@@ -136,8 +123,8 @@ class SCFind:
 
         self.index = ef
         self.datasets = [tissue_modified]
-        self.datasets_map[tissue_modified] = [dataset_id_modified]
         self.index_exist = True
+        self.metadata = {dataset_id: [f'{tissue_modified}.{ct}' for ct in cell_types]}
 
     def saveObject(self, file: str) -> None:
         """
@@ -168,8 +155,6 @@ class SCFind:
         saved_result = {'serialized': self.serialized,
                         'datasets': self.datasets,
                         'metadata': self.metadata,
-                        'datasets_map': self.datasets_map,
-                        'datasetID_map': self.datasetID_map,
                         }
 
         # Save the serialized object to a file
@@ -215,8 +200,7 @@ class SCFind:
         self.serialized = None
         self.index_exist = True
         self.metadata = loaded_object['metadata']
-        self.datasets_map = loaded_object['datasets_map']
-        self.datasetID_map = loaded_object['datasetID_map']
+
 
     def mergeDataset(self, new_object: 'SCFind') -> None:
         """
@@ -242,35 +226,26 @@ class SCFind:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
 
-        # Update datasets_map
+        # Update datasets
         all_datasets = set(self.datasets).union(new_object.datasets)
         self.datasets = all_datasets
-        for d in all_datasets:
-            if d not in self.datasets_map:
-                self.datasets_map[d] = new_object.datasets_map[d]
-            else:
-                intersection = set(self.datasets_map.get(d, [])).intersection(new_object.datasets_map.get(d, []))
-                if intersection:
-                    raise ValueError(f"Error: {intersection} already exists in current index."
-                                     f"Not allowed to update index with duplicated datasets.")
-
-                self.datasets_map[d].extend(new_object.datasets_map.get(d, []))
-
-        # Update datasetID_map
-        duplicate_dataset_index = set(self.datasetID_map.index).intersection(new_object.datasetID_map.index)
-        if duplicate_dataset_index:
-            raise ValueError(f"Error: duplicate dataset index in mapping: {duplicate_dataset_index}")
-
-        self.datasetID_map = pd.concat(
-            [self.datasetID_map, new_object.datasetID_map], ignore_index=False
-        )
+        
+        # Update metadata
+        old_datasetid = list(self.metadata.keys())
+        new_datasetid = list(new_object.metadata.keys())
+        datasetid_dup = set(old_datasetid).intersection(new_datasetid)
+        if datasetid_dup:
+            raise ValueError(f"{datasetid_dup} already exists in the current SCFind object. \
+                             Shouldn't update index with duplicate datasets.")
+        
+        self.metadata.update(new_object.metadata)
 
         print(f"Merging {new_object.datasets} ... ")
-        self.index.mergeDB(new_object.index)
+        self.index.updateDB(new_object.index)
 
     def mergeAnnData(self, adata: AnnData,
-                     dataset_id: str,
                      tissue: str,
+                     dataset_id: str,
                      feature_name: str = 'gene',
                      cell_type_label: str = 'cell_type',
                      qb: int = 2
@@ -283,11 +258,11 @@ class SCFind:
         adata: AnnData
             The annotated data matrix of shape (n_obs, n_vars)
 
-        dataset_id: str
-            Dataset ID obtained from HuBMAP.
-
         tissue: str
             Tissue name.
+
+        dataset_id: str
+            Dataset ID obtained from HuBMAP.
 
         feature_name: str, default='feature_name'
             Name of the feature to be used, typically indicate gene names.
@@ -297,7 +272,6 @@ class SCFind:
 
         qb: int, default=2
             Number of bits per cell that are going to be used for quantile compression of the expression data.
-
 
         Returns
         -------
@@ -310,13 +284,11 @@ class SCFind:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
 
-        dataset_index = len(self.datasetID_map)
 
         new_object = SCFind()._buildCellTypeIndex(
             adata=adata,
-            dataset_id=dataset_id,
             tissue=tissue,
-            dataset_index=dataset_index,
+            dataset_id=dataset_id,
             feature_name=feature_name,
             cell_type_label=cell_type_label,
             qb=qb,
@@ -358,16 +330,12 @@ class SCFind:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
 
-        datasets = self._select_datasets(datasets)  # Identify valid datasets (no stamp)
-        if not datasets:
-            raise ValueError(f"No valid dataset identified in input. Use index.datasets to check valid datasets.")
-        
-        datasets_name_stamp = [ds_stamp for d in datasets for ds_stamp in self.datasets_map[d]]
+        datasets = self._select_datasets(datasets)  # Identify valid datasets
 
         try:
             results = self.index.findMarkerGenes(
                 self._case_correct(gene_list),
-                datasets_name_stamp,
+                datasets,
                 exhaustive,
                 support_cutoff
             )
@@ -388,7 +356,7 @@ class SCFind:
         ----------
         cell_type: str
             The cell type for which we want to retrieve the expression data.
-            The format should be tissue(dataset).cell_type
+            The format should be tissue.cell_type
 
         Returns
         -------
@@ -399,10 +367,10 @@ class SCFind:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
         
-        cell_type_stamp = self._select_celltype_stamp(cell_type)
+        cell_type = self._select_celltype(cell_type)
 
         adatas = []
-        for ct in cell_type_stamp:
+        for ct in cell_type:
             result = self.index.getCellTypeExpression(ct)
             
             if len(result) == 5:  # sparse matrix
@@ -450,8 +418,8 @@ class SCFind:
             The dataframe will be sorted according to this field. Defaults to 'f1'.
 
         include_prefix: bool, default=True
-            If True, include the dataset name as prefix in the cellType.
-            If False, only include cell type name.
+            If True, include the dataset name (tissue) as prefix in the cell type such that tissue.cell_type.
+            If False, the output is informated as cell_type.
 
         Returns
         -------
@@ -462,26 +430,14 @@ class SCFind:
         if not self.index_exist:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
+        
+        cell_types = self._select_celltype(cell_types)
+        background_cell_types = self._select_celltype(background_cell_types)
 
-        if background_cell_types is None:
-            # print("Considering the whole database.")
-            background_cell_types = self.cellTypeNames()
+        background_cell_types = list(set(background_cell_types).union(cell_types))
 
-        if isinstance(background_cell_types, str):
-            background_cell_types = [background_cell_types]
 
-        if isinstance(cell_types, str):
-            cell_types = [cell_types]
-
-        background_cell_types_set = set(background_cell_types)
-        background_cell_types_set.update(set(cell_types))
-
-        background_cell_types = list(background_cell_types_set)
-
-        cell_types_stamp = self._select_celltype_stamp(cell_types)
-        background_cell_types_stamp = self._select_celltype_stamp(background_cell_types)
-
-        all_cell_types = self.index.cellTypeMarkers(cell_types_stamp, background_cell_types_stamp)
+        all_cell_types = self.index.cellTypeMarkers(cell_types, background_cell_types)
         all_cell_types = pd.DataFrame(all_cell_types)
 
         if sort_field not in all_cell_types.keys():
@@ -510,17 +466,16 @@ class SCFind:
         Returns
         -------
         List[str]
-            A list of cell type names. If 'datasets' is provided, only the cell types
-            corresponding to the specified datasets will be returned. The format is [tissue(dataset).cell_type]
+            A list of cell type names. 
+            If 'datasets' is provided, only the cell types corresponding to the specified datasets will be returned. 
+            The format is [tissue(dataset).cell_type]
         """
 
         if not self.index_exist:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
 
-        all_cell_types_stamp = self.index.getCellTypes()
-        all_cell_types = [f"{name.split('_')[0]}.{name.split('.')[1]}" for name in all_cell_types_stamp]
-        all_cell_types = list(set(all_cell_types))  # remove duplicate datasets distinguished by stamp for better unstanding to users
+        all_cell_types = self.index.getCellTypes()
 
         if datasets is None:
             return all_cell_types
@@ -560,8 +515,8 @@ class SCFind:
             The DataFrame will be sorted according to this field.
 
         include_prefix: bool, default=True
-            If True, include the dataset name as prefix in the cellType.
-            If False, only include cell type name.
+            If True, include the dataset name as prefix in the cell_type which is formatted as tissue.cell_type.
+            If False, the output is formated as cell_type.
 
         Returns
         -------
@@ -572,29 +527,16 @@ class SCFind:
         if not self.index_exist:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
+        
+        cell_types = self._select_celltype(cell_types)
+        background_cell_types = self._select_celltype(background_cell_types)
 
-        if background_cell_types is None:
-            print("Considering the whole database.")
-            background_cell_types = self.cellTypeNames()
-
-        if isinstance(background_cell_types, str):
-            background_cell_types = [background_cell_types]
-
-        if isinstance(cell_types, str):
-            cell_types = [cell_types]
-
-        background_cell_types_set = set(background_cell_types)
-        background_cell_types_set.update(set(cell_types))
-
-        background_cell_types = list(background_cell_types_set)
-
-        cell_types_stamp = self._select_celltype_stamp(cell_types)
-        background_cell_types_stamp = self._select_celltype_stamp(background_cell_types)
+        background_cell_types = list(set(background_cell_types).union(cell_types))
 
         all_cell_types = self.index.evaluateCellTypeMarkers(
-            cell_types_stamp,
+            cell_types,
             self._case_correct(gene_list),
-            background_cell_types_stamp,
+            background_cell_types,
         )
         all_cell_types = pd.DataFrame(all_cell_types)
 
@@ -632,8 +574,8 @@ class SCFind:
             If datasets=None, use all datasets as background.
 
         include_prefix: bool, default=True
-            If True, include the dataset name as prefix in the cell_type.
-            If False, only include cell type name.
+            If True, include the dataset name as prefix in the cell_type which is formatted as tissue.cell_type.
+            If False, only include cell type name which is formatted as cell_type.
 
         Returns
         -------
@@ -646,9 +588,9 @@ class SCFind:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
 
-        result = self.findCellTypes(gene_list, datasets)  # ids of each cellcell_stamp
+        result = self.findCellTypes(gene_list, datasets)  
         if result:
-            df = self._phyper_test(result)  # merge celltype by removing stamp
+            df = self._phyper_test(result) 
             df = df.sort_values(by='adj-pval', ascending=True, ignore_index=True)
             if not include_prefix:
                 # Split the 'cell_type' column and keep only the suffix
@@ -691,7 +633,6 @@ class SCFind:
             object.buildCellTypeIndex().")
 
         datasets = self._select_datasets(datasets)
-        datasets_stamp = [d for ds in datasets for d in self.datasets_map[ds]]
 
         if isinstance(gene_list, str):
             gene_list = [gene_list]
@@ -704,7 +645,7 @@ class SCFind:
                 print(f"All input genes are not valid.")
                 return {}
             if all(isinstance(gene, str) for gene in sanitized_genes):
-                cts = self.index.findCellTypes(sanitized_genes, datasets_stamp)
+                cts = self.index.findCellTypes(sanitized_genes, datasets)
                 # in python, index starts at 0
                 cts = {key: [cell_id - 1 for cell_id in value] for key, value in cts.items()}
                 return cts
@@ -749,19 +690,18 @@ class SCFind:
 
             cell_to_id = []
             if len(pos_genes) == 0 and len(or_genes) == 0 and (len(excl_genes) != 0 or len(excl_or_genes) != 0):
-                datasets_stamp = [d for ds in datasets for d in self.datasets_map[ds]]
-                all_cell_types_stamp = self.index.getCellTypes()
-                cell_types_stamp = [ct for ct in all_cell_types_stamp if ct.split('_')[0] in datasets]
-                cell_to_id = self.index.getCellTypeSupport(cell_types_stamp, False)
+                all_cell_types = self.index.getCellTypes()
+                cell_types = [ct for ct in all_cell_types if ct.split('.')[0] in datasets]
+                cell_to_id = self.index.getCellTypeSupport(cell_types)
                 cell_to_id = {name: list(range(cells)) for name, cells in 
-                              zip(cell_types_stamp, cell_to_id)}
+                              zip(cell_types, cell_to_id)}
 
-                cell_to_id = SCFind._pair_id(cell_to_id)  # celltype_stamp#id format
+                cell_to_id = SCFind._pair_id(cell_to_id)  
 
             if len(or_genes) != 0:
                 gene_or = []
                 for i in range(len(or_genes)):
-                    tmp_id = SCFind._pair_id(self.index.findCellTypes(pos_genes + [or_genes[i]], datasets_stamp))  # celltype_stamp#id
+                    tmp_id = SCFind._pair_id(self.index.findCellTypes(pos_genes + [or_genes[i]], datasets))  
 
                     if len(pos_genes) != 0 and tmp_id is not None:
                         print(f"Found {len(tmp_id)} {'cells' if len(tmp_id) > 1 else 'cell'} co-expressing "
@@ -778,7 +718,7 @@ class SCFind:
                         f"{' or '.join(gene_or)}")
             else:
                 if len(pos_genes) != 0:
-                    cell_to_id = SCFind._pair_id(self.index.findCellTypes(pos_genes, datasets_stamp))  #celltype_stamp#id
+                    cell_to_id = SCFind._pair_id(self.index.findCellTypes(pos_genes, datasets)) 
                     print(
                         f"Found {len(cell_to_id)} {'cells co-expressing' if len(pos_genes) > 1 else 'cell expressing'} "
                         f" {' and '.join(pos_genes)}")
@@ -789,7 +729,7 @@ class SCFind:
             if len(excl_or_genes) != 0:
                 # Negative select cell in OR condition
                 for i in range(len(excl_or_genes)):
-                    ex_tmp_id = SCFind._pair_id(self.index.findCellTypes(excl_genes + [excl_or_genes[i]], datasets_stamp))
+                    ex_tmp_id = SCFind._pair_id(self.index.findCellTypes(excl_genes + [excl_or_genes[i]], datasets))
 
                     num_excluded = sum(item in ex_tmp_id for item in cell_to_id)
                     excl_message = f"Excluded {num_excluded} {'cells' if num_excluded > 1 else 'cell'}"
@@ -815,7 +755,7 @@ class SCFind:
                 if len(excl_genes) != 0:
                     # Negative selection
                     cell_to_id = list(
-                        set(cell_to_id) - set(SCFind._pair_id(self.index.findCellTypes(excl_genes, datasets_stamp))))
+                        set(cell_to_id) - set(SCFind._pair_id(self.index.findCellTypes(excl_genes, datasets))))
                     count_cell -= len(cell_to_id)
                     if count_cell > 0:
                         excl_message = (
@@ -904,13 +844,12 @@ class SCFind:
         print("Calculating cell-types for each gene...")
 
         datasets = self._select_datasets(datasets)
-        datasets_stamp = [d for ds in datasets for d in self.datasets_map[ds]]
 
         if gene_list is None:
-            res = self.index.geneSupportInCellTypes(self.index.genes(), datasets_stamp)
+            res = self.index.geneSupportInCellTypes(self.index.genes(), datasets)
         else:
             gene_list = self._case_correct(gene_list)
-            res = self.index.geneSupportInCellTypes(gene_list, datasets_stamp)
+            res = self.index.geneSupportInCellTypes(gene_list, datasets)
 
         res_tissue = {key.replace(".", "#"): value for key, value in res.items()}
 
@@ -931,7 +870,7 @@ class SCFind:
             return {gene: 0 for gene in gene_list}
         else:
             df.iloc[:, 0] = df.iloc[:, 3].str.replace(r'^[^.]+\.', '', regex=True).apply(
-                lambda x: np.sum(self.index.getCellTypeSupport(self._select_celltype_stamp(x), True)) * min_fraction)
+                lambda x: np.sum(self.index.getCellTypeSupport(self._select_celltype(x))) * min_fraction)
 
             df.loc[df.iloc[:, 0] < min_cells, df.columns[0]] = min_cells
             df = df[df.iloc[:, 2] > df.iloc[:, 0]]
@@ -969,12 +908,12 @@ class SCFind:
             raise ValueError("Index contains 1 dataset only. No need to detect genes in tissues (datasets).")
         print("Calculating tissues for each gene...")
 
-        datasets_stamp = [d for ds in self.datasets_map.values() for d in ds]
+        datasets = self.datasets
         if gene_list is None:
-            res = self.index.geneSupportInCellTypes(self.index.genes(), datasets_stamp)
+            res = self.index.geneSupportInCellTypes(self.index.genes(), datasets)
         else:
             gene_list = self._case_correct(gene_list)
-            res = self.index.geneSupportInCellTypes(gene_list, datasets_stamp)
+            res = self.index.geneSupportInCellTypes(gene_list, datasets)
 
         if not res:
             return {gene: 0 for gene in gene_list}
@@ -1104,26 +1043,15 @@ class SCFind:
 
         print("Searching for gene signatures...")
 
-        if cell_types is None:
-            cell_types_all_stamp = self.index.getCellTypes()
-            datasets = [d.split('_')[0] for d in cell_types_all_stamp]
-            cts = [d.split('.')[1] for d in cell_types_all_stamp]
-            cell_types_all = list(set([f"{d}.{ct}" for d, ct in zip(datasets, cts)]))
-
-        else:
-            if isinstance(cell_types, str):
-                cell_types = [cell_types]
-
-            cell_types_all = [cell_type for cell_type in self.cellTypeNames() if
-                              cell_type.lower() in map(str.lower, cell_types)]
+        cell_types = self._select_celltype(cell_types)
 
         signatures = {}
 
         try:
-            if not cell_types_all:
+            if not cell_types:
                 raise ValueError(f"Ignored {', '.join(cell_types)}. Cell type not found in index.")
 
-            for cell_type in tqdm(cell_types_all, total=len(cell_types_all), desc="Processing cell types"):
+            for cell_type in tqdm(cell_types, total=len(cell_types), desc="Processing cell types"):
                 signatures[cell_type] = self._find_signature(cell_type, max_genes=max_genes, min_cells=min_cells,
                                                              max_pval=max_pval)
             return signatures
@@ -1168,10 +1096,7 @@ class SCFind:
 
         print("Searching for genes with similar pattern...")
 
-        if not datasets:
-            datasets = self.datasets
-        else:
-            datasets = self._select_datasets(datasets)
+        datasets = self._select_datasets(datasets)
 
         e = self.findCellTypes(gene_list, datasets)
         n_e = sum(len(sublist) for sublist in e.values())
@@ -1248,10 +1173,10 @@ class SCFind:
         else:
             valid_genes = self.scfindGenes
 
-        cell_type1_stamp = self._select_celltype_stamp(cell_type1)
-        cell_type2_stamp = self._select_celltype_stamp(cell_type2)
+        cell_type1 = self._select_celltype(cell_type1)
+        cell_type2 = self._select_celltype(cell_type2)
 
-        results = self.index.DEGenes(cell_type1_stamp, cell_type2_stamp, valid_genes, min_fraction)
+        results = self.index.DEGenes(cell_type1, cell_type2, valid_genes, min_fraction)
         if len(results) == 0:
             print("No significant genes identified between given cell types.")
             return pd.DataFrame(
@@ -1293,9 +1218,8 @@ class SCFind:
 
     @staticmethod
     def _buildCellTypeIndex(adata: AnnData,
-                            dataset_id: str,
                             tissue: str,
-                            dataset_index: Optional[int] = None,
+                            dataset_id: str,
                             feature_name: str = 'feature_name',
                             cell_type_label: str = 'cell_type',
                             qb: int = 2,
@@ -1309,16 +1233,11 @@ class SCFind:
             The annotated data matrix of shape (n_obs, n_vars). Rows correspond to cells
             and columns to genes.
 
-        dataset_id: str
-            Dataset ID obtained from HuBMAP.
-
         tissue: str
             Tissue name.
 
-        dataset_index: Optional[int], default=None
-            Index of the dataset in the SCFind object. If not provided, it will be set as 0.
-            This is used to update index for HuBMAP dataset. By checking the number of datasets in old index,
-            we can set the index of the new dataset to distinguish duplicate cell types.
+        dataset_id: str
+            Dataset ID obtained from HuBMAP.
 
         feature_name: str, default='feature_name'
             The label or key in the AnnData object's variables (var) that corresponds to the feature names.
@@ -1338,7 +1257,6 @@ class SCFind:
             adata=adata, 
             dataset_id=dataset_id,
             tissue=tissue,
-            dataset_index=dataset_index,
             feature_name=feature_name,
             cell_type_label=cell_type_label, 
             qb=qb)
@@ -1371,7 +1289,7 @@ class SCFind:
 
         missing_datasets = set(datasets).difference(self.datasets)
         if missing_datasets:
-            print(f"Dataset(s) {', '.join(missing_datasets)} do not exist in the database. Ignore it.")
+            print(f"Dataset(s) {', '.join(missing_datasets)} do not exist in the database. Ignore them.")
         
         datasets = list(set(datasets).intersection(self.datasets))
 
@@ -1380,45 +1298,44 @@ class SCFind:
 
         return datasets
     
-    def _select_celltype_stamp(self,
-                               cell_type: Union[str, List[str]] = None,
-                               ):
+    def _select_celltype(self,
+                         cell_type: Union[str, List[str]] = None,
+                         ) -> List[str]:
         """
-        Select dataset_name_stamp.celltype for input cell_type (format: dataset.cell_type)
+        Select valid tissue.celltype for input cell_type
 
         Parameters
         ----------
         cell_type: string or list of strings, optional
-            List of cell types without stamp
+            List of cell types in the format of tissue.cell_type
         
         Returns
         -------
-            List of cell types with stamp
+            List of valid tissue.cell_types
 
         Raises
         ------
         Exception:
             If none of the specified datasets exists in the available datasets list.
         """
-        if cell_type is None:
-            cell_type_stamp = self.index.getCellTypes()
-            return cell_type_stamp
+
+        tissue_cell_type = self.index.getCellTypes()
+        if cell_type is None:    
+            return tissue_cell_type
 
         if isinstance(cell_type, str):
             cell_type = [cell_type]
+
+        missing_cell_type = set(cell_type).difference(tissue_cell_type)
+        if missing_cell_type:
+            print(f"Cell type(s) {', '.join(missing_cell_type)} do not exist in the database. Ignore them.")
         
-        datasets = [d.split('.')[0] for d in cell_type]
-        datasets = self._select_datasets(datasets)
+        cell_type = list(set(cell_type).intersection(tissue_cell_type))
 
-        cts = [ct.split('.')[1] for ct in cell_type]
-
-        dataset_stamp = [d for ds in datasets for d in self.datasets_map[ds]]
-        dataset_id = self.datasetID_map['dataset_id'].isin(dataset_stamp)
-        dataset_id = self.datasetID_map[dataset_id].index.astype(str)
-        cell_type_stamp = self.index.getCellTypes()
-        filter_cell_type_stamp = [ct for ct in cell_type_stamp if ct.split('.')[1] in cts and ct.split('.')[0].split('_')[1] in dataset_id]
-
-        return filter_cell_type_stamp
+        if len(cell_type) == 0:
+            raise ValueError("None of the input cell types are valid. Please check valid cell types by index.cellTypeNames")
+        
+        return cell_type
 
     def _case_correct(self,
                       gene_list: Union[str, List[str]],
@@ -1500,7 +1417,7 @@ class SCFind:
         Parameters
         ----------
         cell_type: str
-            Cell type name without stamp.
+            Cell type name
 
         max_genes: int, default=1000
             The maximum number of genes. Default is 1000.
@@ -1519,8 +1436,8 @@ class SCFind:
         df = self.cellTypeMarkers([cell_type], top_k=max_genes, sort_field="recall")
         genes = [str(gene) for gene in df['genes']]
         genes_list = []
-        cell_type_stamp = self._select_celltype_stamp(cell_type)
-        total_cells = np.sum([self.index.getCellTypeMeta(ct)['total_cells'] for ct in cell_type_stamp])
+        cell_type = self._select_celltype(cell_type)
+        total_cells = np.sum([self.index.getCellTypeMeta(ct)['total_cells'] for ct in cell_type])
         thres = min(min_cells, total_cells)
 
         for j in range(len(df)):
@@ -1560,30 +1477,24 @@ class SCFind:
         # Convert the result to a dataframe
         df = self._result_to_dataframe(result)
 
-        # Aggregate by cell_type_stamp
-        cell_types_df = df.groupby('cell_type').size().reset_index(name='cell_hits')
-        cell_types_df['cell_type'] = cell_types_df['cell_type'].str.split('_').str[0] + "." + cell_types_df['cell_type'].str.split('.').str[1]
-        cell_types_df = cell_types_df.groupby('cell_type', as_index=False)['cell_hits'].sum()
-
-
         # Get total_cells for each cell type
-        cell_types_df['total_cells'] = cell_types_df['cell_type'].apply(lambda x: np.sum(self.index.getCellTypeSupport(self._select_celltype_stamp(x), True)))
+        df['total_cells'] = df['cell_type'].apply(lambda x: np.sum(self.index.getCellTypeSupport(self._select_celltype(x))))
 
         query_hits = len(df)
 
         # Calculate the hypergeometric test p-values
-        cell_types_df['pval'] = 1 - hypergeom.cdf(
-            cell_types_df['cell_hits'],
-            cell_types_df['total_cells'].sum(),
-            cell_types_df['total_cells'],
+        df['pval'] = 1 - hypergeom.cdf(
+            df['cell_hits'],
+            df['total_cells'].sum(),
+            df['total_cells'],
             query_hits
         )
 
         # Adjust p-values using Holm adjustment method
-        adjusted_pvals = multipletests(cell_types_df['pval'], method='holm')[1]
-        cell_types_df['adj-pval'] = adjusted_pvals
+        adjusted_pvals = multipletests(df['pval'], method='holm')[1]
+        df['adj-pval'] = adjusted_pvals
 
-        return cell_types_df
+        return df
 
     @staticmethod
     def _result_to_dataframe(result: Dict[str, Union[int, List[int]]]) -> pd.DataFrame:
