@@ -1382,8 +1382,11 @@ int EliasFanoDB::updateDB(const EliasFanoDB &db)
 
 
   // 现在处理基因索引和创建新的EliasFano编码
-  for (auto &[key, id_pair] : gene_ct_ids)
+  for (auto &element : gene_ct_ids)
   {
+    auto &key = element.first;
+    auto &id_pair = element.second;
+    
     const GeneName &gene_name = key.first;
     CellTypeID cell_type_id = key.second;
     auto &[old_ids, new_ids] = id_pair;
