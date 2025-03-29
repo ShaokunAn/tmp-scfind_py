@@ -1419,7 +1419,7 @@ int EliasFanoDB::updateDB(const EliasFanoDB &db)
     auto ef_it = index_it->second.find(cell_type_id);
     if (ef_it != index_it->second.end())
     {
-      std::cout<<"found exising index"<<std::endl;
+      // std::cout<<"found exising index"<<std::endl;
       // 已经存在编码，需要合并
       EliasFano &existing_ef = this->ef_data[ef_it->second];
       std::vector<int> existing_ids = this->eliasFanoDecoding(existing_ef);

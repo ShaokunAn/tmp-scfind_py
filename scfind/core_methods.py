@@ -228,7 +228,7 @@ class SCFind:
 
         # Update datasets
         all_datasets = set(self.datasets).union(new_object.datasets)
-        self.datasets = all_datasets
+        self.datasets = list(all_datasets)
         
         # Update metadata
         old_datasetid = list(self.metadata.keys())
