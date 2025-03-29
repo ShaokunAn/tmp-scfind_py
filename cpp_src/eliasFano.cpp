@@ -1386,10 +1386,12 @@ int EliasFanoDB::updateDB(const EliasFanoDB &db)
   {
     auto &key = element.first;
     auto &id_pair = element.second;
-    
+
     const GeneName &gene_name = key.first;
     CellTypeID cell_type_id = key.second;
-    auto &[old_ids, new_ids] = id_pair;
+
+    auto &old_ids = id_pair.first;
+    auto &new_ids = id_pair.second;
     
     // 更新或创建基因元数据
     auto gene_it = this->genes.find(gene_name);
