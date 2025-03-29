@@ -1481,7 +1481,7 @@ class SCFind:
         cell_types_df = df.groupby('cell_type').size().reset_index(name='cell_hits')
         cell_types_df['total_cells'] = cell_types_df['cell_type'].apply(lambda x: self.index.getCellTypeSupport([x])[0])
 
-        query_hits = len(cell_types_df)
+        query_hits = len(df)
 
         # Calculate the hypergeometric test p-values
         df['pval'] = 1 - hypergeom.cdf(
