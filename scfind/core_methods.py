@@ -1477,24 +1477,25 @@ class SCFind:
         # Convert the result to a dataframe
         df = self._result_to_dataframe(result)
 
-        # Get total_cells for each cell type
-        df['total_cells'] = df['cell_type'].apply(lambda x: np.sum(self.index.getCellTypeSupport(self._select_celltype(x))))
+         # Aggregate by cell_type
+        cell_types_df = df.groupby('cell_type').size().reset_index(name='cell_hits')
+        cell_types_df['total_cells'] = cell_types_df['cell_type'].apply(lambda x: self.index.getCellTypeSupport([x])[0])
 
-        query_hits = len(df)
+        query_hits = len(cell_types_df)
 
         # Calculate the hypergeometric test p-values
         df['pval'] = 1 - hypergeom.cdf(
-            df['cell_hits'],
-            df['total_cells'].sum(),
-            df['total_cells'],
+            cell_types_df['cell_hits'],
+            cell_types_df['total_cells'].sum(),
+            cell_types_df['total_cells'],
             query_hits
         )
 
         # Adjust p-values using Holm adjustment method
-        adjusted_pvals = multipletests(df['pval'], method='holm')[1]
-        df['adj-pval'] = adjusted_pvals
+        adjusted_pvals = multipletests(cell_types_df['pval'], method='holm')[1]
+        cell_types_df['adj-pval'] = adjusted_pvals
 
-        return df
+        return cell_types_df
 
     @staticmethod
     def _result_to_dataframe(result: Dict[str, Union[int, List[int]]]) -> pd.DataFrame:
