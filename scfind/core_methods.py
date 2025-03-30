@@ -1436,7 +1436,7 @@ class SCFind:
         df = self.cellTypeMarkers([cell_type], top_k=max_genes, sort_field="recall")
         genes = [str(gene) for gene in df['genes']]
         genes_list = []
-        cell_type = self._select_celltype(cell_type)
+        cell_type = self._select_celltype(cell_type)[0]
         total_cells = np.sum([self.index.getCellTypeMeta(ct)['total_cells'] for ct in cell_type])
         thres = min(min_cells, total_cells)
 
