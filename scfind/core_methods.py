@@ -1484,7 +1484,7 @@ class SCFind:
         query_hits = len(df)
 
         # Calculate the hypergeometric test p-values
-        df['pval'] = 1 - hypergeom.cdf(
+        cell_types_df['pval'] = 1 - hypergeom.cdf(
             cell_types_df['cell_hits'],
             cell_types_df['total_cells'].sum(),
             cell_types_df['total_cells'],
