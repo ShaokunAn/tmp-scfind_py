@@ -69,6 +69,7 @@ int EliasFanoDB::loadByteStream(const py::bytes &stream)
   SerializationDB ser;
 
   ser.loadByteStream(stream);
+  std::cout<< "Byte stream loaded" << std::endl;
   ser.deserializeDB(*this);
   return 0;
 }
@@ -147,7 +148,7 @@ long EliasFanoDB::eliasFanoCoding(const std::vector<int> &ids, const std::vector
     BitSet32 c = int2bin_bounded(*expr, l);
 
     for (int i = 0; i < l; i++, ++l_iter)
-    {
+    { 
       *l_iter = c.second[i];
     }
     unsigned int upper_bits = (*expr >> l);
@@ -424,6 +425,7 @@ long EliasFanoDB::encodeMatrix(const std::string &cell_type_name, const py::obje
     {
       db_entry->second.insert(std::make_pair(cell_type_id, ef_index));
     }
+
   }
 
   int i = 0; // 1 based indexing
@@ -1094,7 +1096,6 @@ std::map<EliasFanoDB::GeneName, CellTypeMarker> EliasFanoDB::_cellTypeScore(cons
       CellTypeMarker &gene_ctm_score = dit.first->second;
       // this->cellTypeMarkerGeneMetrics(gene_ctm_score);
       const EliasFano &ex_vec = this->ef_data[ctm->second];
-      // std::cout << ctm->second << " size: " << this->ef_data[ctm->second]. << std::endl;
       int cells_in_ct = ex_vec.getSize();
       gene_ctm_score.tp = cells_in_ct;
       gene_ctm_score.fn = total_cells_in_ct - gene_ctm_score.tp;
@@ -1269,7 +1270,6 @@ int EliasFanoDB::updateDB(const EliasFanoDB &db)
   
   // the DB will grow by this amount of cells in newly added data
   this->total_cells += extdb.total_cells;
-  std::cout<<"total_cells: "<<this->total_cells<<std::endl;
   
   // 记录各个细胞类型的新旧ID映射和细胞ID偏移量
   std::map<CellTypeID, CellTypeID> cell_type_id_map;
@@ -1302,8 +1302,6 @@ int EliasFanoDB::updateDB(const EliasFanoDB &db)
       cell_id_offsets[extdb.cell_types.at(ct.name)] = 0; // 新细胞类型不需要偏移
     }
   }
-  
-  std::cout<<"cell_type_id_map size: "<<cell_type_id_map.size()<<std::endl;
 
   // 处理cells集合 - 为减少重复遍历，我们先收集所有需要添加的细胞
   for (auto const &cell : extdb.cells)
@@ -1323,9 +1321,6 @@ int EliasFanoDB::updateDB(const EliasFanoDB &db)
     CellID new_cell_id(new_cell_type_id, new_cell_num);
     this->cells.insert({new_cell_id, cell.second});
   }
-
-  std::cout<<"for cell in extdb.cells done!"<<std::endl;
-  
 
   // 创建映射，跟踪每个基因和细胞类型对应的新EliasFano编码
   // 键: <基因名, 细胞类型ID>, 值: <旧IDs, 新IDs>
@@ -1377,9 +1372,6 @@ int EliasFanoDB::updateDB(const EliasFanoDB &db)
       gene_ct_ids[key] = std::make_pair(old_ids, new_ids);
     }
   }
-
-  std::cout<<"process index done!"<<std::endl;
-
 
   // 现在处理基因索引和创建新的EliasFano编码
   for (auto &element : gene_ct_ids)

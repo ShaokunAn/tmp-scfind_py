@@ -66,6 +66,7 @@ void SerializationDB::deserializeEliasFano(EliasFano& ef, int quantization_bits)
   read(quant_size);
 
   // Multiply by eight, shift three positions
+  // std::cout << "cells = " << cells << std::endl;
   // std::cout << "l = " << ef.l << std::endl;
   // std::cout << "Read " << " H " << H_size << std::endl;
   // std::cout << "Read " << " L " << L_size << std::endl;
@@ -103,7 +104,6 @@ void SerializationDB::deserializeEliasFano(EliasFano& ef, int quantization_bits)
   readBuffer(&buffer[0], buffer.size());
   byteToBoolVector(buffer, ef.expr.quantile);
 
-
   // Take care of the byte quantization
   // Resize container to the right size
   ef.expr.quantile.resize(quantization_bits * cells);
@@ -117,6 +117,7 @@ void SerializationDB::binarizeEliasFano(const EliasFano& ef)
 {
   // int i = 0;
   int cells = ef.L.size() / ef.l;
+  
   write(cells);
   write(ef.l);
   write(ef.idf);
@@ -223,12 +224,6 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
   int cell_types_present;
   read(cell_types_present);
 
-  if(not(cell_types_present > 0))
-  {
-    std::cerr << "something went wrong with the cell types" << std::endl;
-    return;
-  }
-
   std::vector<CellTypeID> cell_type_ids;
   cell_type_ids.reserve(cell_types_present);
   for (int i = 0; i < cell_types_present; ++i)
@@ -253,11 +248,13 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
   read(index_size);
 
   std::vector<IndexRecord> records;
+
   for (int i = 0; i < index_size; ++i)
   {
     IndexRecord record;
     read(record);
     records.push_back(record);
+    
   }
 
   for (int i = 0; i < index_size; i++)
@@ -265,7 +262,6 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
     EliasFano ef;
     deserializeEliasFano(ef, efdb.quantization_bits);
     efdb.ef_data.push_back(ef);
-
   }
 
   // Build database
@@ -286,8 +282,6 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
   this->serialized_bytestream.clear();
   // return efdb;
 }
-
-
 
 void SerializationDB::serialize(const EliasFanoDB& efdb)
 {

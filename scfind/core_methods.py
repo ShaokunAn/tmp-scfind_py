@@ -71,6 +71,12 @@ class SCFind:
             If dataset_id contains any dots or if assay_name is not found in the AnnData object.
         """
 
+        # Ensure unique features in adata
+        unique_features = adata.var[feature_name].unique()
+        if adata.n_var != len(unique_features):
+            raise ValueError(f"Feature names are not unique. \n"
+            f"Please ensure that the feature names {feature_name} in adata.var are unique.")
+        
         # Get cell types
         try:
             cell_types_all = adata.obs[cell_type_label].astype('category')
