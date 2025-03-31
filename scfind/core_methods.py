@@ -1502,6 +1502,26 @@ class SCFind:
         cell_types_df['adj-pval'] = adjusted_pvals
 
         return cell_types_df
+        
+    def _find_dataset_for_cell_type(
+            self, 
+            cell_type: str) -> List[str]:
+        """
+        Find the datasets that contain the cell type.
+
+        Parameters
+        ----------
+        cell_type: str
+            Cell type name
+
+        Returns
+        -------
+        A list of datasets that contain the cell type.
+        """
+        cell_type = self._select_celltype(cell_type)[0]
+        datasets = [d for d, cts in self.metadata.items() if cell_type in cts]
+
+        return datasets
 
     @staticmethod
     def _result_to_dataframe(result: Dict[str, Union[int, List[int]]]) -> pd.DataFrame:
