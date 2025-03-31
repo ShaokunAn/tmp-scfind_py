@@ -73,7 +73,7 @@ class SCFind:
 
         # Ensure unique features in adata
         unique_features = adata.var[feature_name].unique()
-        if adata.n_var != len(unique_features):
+        if adata.n_vars != len(unique_features):
             raise ValueError(f"Feature names are not unique. \n"
             f"Please ensure that the feature names {feature_name} in adata.var are unique.")
         
