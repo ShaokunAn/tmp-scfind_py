@@ -1459,7 +1459,7 @@ class SCFind:
                     if (res[ind].loc[:, 'adj-pval'] > max_pval).all() or (res[ind].iloc[:, 1] < thres).any():
                         break
 
-            genes_list.append(genes[j])
+                genes_list.append(genes[j])
 
         return genes_list
 
