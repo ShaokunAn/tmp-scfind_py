@@ -1503,7 +1503,7 @@ class SCFind:
 
         return cell_types_df
         
-    def _find_dataset_for_cell_type(
+    def find_dataset_for_cell_type(
             self, 
             cell_type: str) -> List[str]:
         """
