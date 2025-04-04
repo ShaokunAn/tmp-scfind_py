@@ -31,7 +31,6 @@ Quantile lognormalcdf(const std::vector<int>& ids, const std::vector<double>& v_
 //    double* v_ptr = static_cast<double*>(v_info.ptr);
 
     std::function<double(const double&)> expr_tran = raw_counts ? [](const double& x) {return std::log(x + 1);}: [](const double& x){return x;};
-    std::cout<<"after expr_tran"<<std::endl;
 
     for (const int& id : ids) {
       if (id <= 0 || id > v_array.size()) {
@@ -61,7 +60,7 @@ Quantile lognormalcdf(const std::vector<int>& ids, const std::vector<double>& v_
     expr.quantile.resize(ids.size() * bits, 0);
     int expr_quantile_i = 0;
     for (auto const& s : ids) {
-        unsigned int t = std::round(normalCDF(expr_tran(v_array[s]), expr.mu, expr.sigma) * (1 << bits));
+        unsigned int t = std::round(normalCDF(expr_tran(v_array[s]), expr.mu, expr.sigma) * ((1 << bits) - 1));
         std::bitset<BITS> q = int2bin_core(t);
         for (unsigned int i = 0; i < bits; ++i) {
             expr.quantile[expr_quantile_i++] = q[i];
