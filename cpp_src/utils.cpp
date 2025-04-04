@@ -49,7 +49,7 @@ Quantile lognormalcdf(const std::vector<int>& ids, const arma::rowvec& v_array, 
     expr.quantile.resize(ids.size() * bits, 0);
     int expr_quantile_i = 0;
     for (auto const& s : ids) {
-        unsigned int t = std::round(normalCDF(expr_tran(v_array[s]), expr.mu, expr.sigma) * (1 << bits));
+        unsigned int t = std::round(normalCDF(expr_tran(v_array[s]), expr.mu, expr.sigma) * ((1 << bits) - 1));
         std::bitset<BITS> q = int2bin_core(t);
         for (unsigned int i = 0; i < bits; ++i) {
             expr.quantile[expr_quantile_i++] = q[i];
