@@ -1169,6 +1169,55 @@ class SCFind:
         else:
             print(f"Cannot find cells expressing {', '.join(gene_list)} in the index.")
             return pd.DataFrame(columns=['gene', 'Jaccard', 'overlap', 'n'])
+        
+    def findDatasets(
+            self,
+            gene_list: Union[str, List[str]],
+            min_cells: int = 10,
+            datasets: Optional[Union[str, List[str]]] = None
+    ) -> pd.DataFrame:
+        """
+        Retrieve HuBMAP datasets that express each of the specified genes above a certain threshold.
+        Parameters
+        ----------
+        gene_list : str or list of str
+            Genes to be searched in the gene index.
+
+        min_cells : int, default=10
+            Threshold of cell hit of a dataset.
+
+        datasets : str or list of str, optional (default=None)
+            The datasets that will be searched in.
+            If datasets=None, all datasets from the index will be used.
+
+        Returns
+        -------
+        pd.DataFrame
+            A dataframe containing datasets and their similarities presented in Jaccard indices.
+        """
+        if isinstance(gene_list, str):
+            gene_list = [gene_list]
+        
+        all_genes = self.scfindGenes
+        gene_list_upper = [g.upper() for g in gene_list]
+        gene_list_filter = [g for g in all_genes if g.upper() in gene_list_upper]
+
+        if len(gene_list_filter) == 0:
+            raise ValueError(f"Cannot find {', '.join(gene_list)} in the index.")
+
+        if len(gene_list_filter) < len(gene_list):
+            print(f"Cannot find {', '.join(set(gene_list) - set(gene_list_filter))} in the index. Ignoring them.")
+
+        datasets = self._select_datasets(datasets)
+        
+        datasets_with_genes = self.index.geneSupportInCellTypes(gene_list_filter, datasets)
+        out_dict = {}
+        for g, ds_dict in datasets_with_genes.items():
+            ds_filter = [d.split('.')[0].replace('-', '.') for d, num in ds_dict.items() if num >= min_cells]
+            out_dict[g] = ds_filter
+
+        return out_dict
+                     
 
     def de_genes(
             self,
