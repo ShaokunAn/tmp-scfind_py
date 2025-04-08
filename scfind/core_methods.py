@@ -1175,7 +1175,7 @@ class SCFind:
             gene_list: Union[str, List[str]],
             min_cells: int = 10,
             datasets: Optional[Union[str, List[str]]] = None
-    ) -> pd.DataFrame:
+    ) -> Dict[str, List[str]]:
         """
         Retrieve HuBMAP datasets that express each of the specified genes above a certain threshold.
         Parameters
@@ -1192,8 +1192,8 @@ class SCFind:
 
         Returns
         -------
-        pd.DataFrame
-            A dataframe containing datasets and their similarities presented in Jaccard indices.
+        Dict
+            A dictionary containing genes and their corresponding HuBMAP datasets
         """
         if isinstance(gene_list, str):
             gene_list = [gene_list]
