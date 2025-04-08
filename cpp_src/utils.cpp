@@ -45,7 +45,6 @@ Quantile lognormalcdf(const std::vector<int>& ids, const std::vector<double>& v_
     expr.mu = std::accumulate(ids.begin(), ids.end(), 0.0, [&v_array, &expr_tran](const double& mean, const int& index){
         return mean + expr_tran(v_array[index - 1]);
     }) / ids.size();
-    std::cout<<"after calculating expr.mu"<<std::endl;
 
     expr.sigma = std::sqrt(
         std::accumulate(
@@ -55,7 +54,6 @@ Quantile lognormalcdf(const std::vector<int>& ids, const std::vector<double>& v_
             [&v_array, &expr, &expr_tran](const double& variance, const int& index){
                 return std::pow(expr.mu - expr_tran(v_array[index - 1]), 2);
             }) / ids.size());
-    std::cout<<"after calculating expr.sigma"<<std::endl;
 
     expr.quantile.resize(ids.size() * bits, 0);
     int expr_quantile_i = 0;
@@ -101,11 +99,12 @@ std::vector<double> decompressValues(const Quantile& q, const unsigned char& qua
     std::cerr << "Too much depth in the quantization bits!" << std::endl;
   }
   std::vector<double> bins((1 << quantization_bits));
-  double bins_size = bins.size();
+  double bins_size = bins.size() - 1;
   // min value
 
   for(int i = 0; i < bins_size; ++i)
   {
+    
     double cdf = (i + 0.5) / bins_size;
     bins[i] = lognormalinv(cdf, q.mu, q.sigma);
 

@@ -34,7 +34,8 @@ class SCFind:
                            dataset_id: str,
                            feature_name: str = 'gene',
                            cell_type_label: str = 'cell_type',
-                           qb: int = 2
+                           qb: int = 2,
+                           if_expression: bool = False,
                            ) -> None:
         """
         Build an index for cell types based on the given AnnData data.
@@ -60,6 +61,10 @@ class SCFind:
         qb: int, default=2
             Number of bits per cell that are going to be used for quantile compression of the expression data.
 
+        if_expression: bool, default=False
+            If True, the expression data will be stored in the index. 
+            We set this as True when building index for HuBMAP dataset, and set this as False when building index for each cell type.
+
         Returns
         -------
         None
@@ -70,6 +75,8 @@ class SCFind:
         ValueError
             If dataset_id contains any dots or if assay_name is not found in the AnnData object.
         """
+
+        self.if_expression = if_expression
 
         # Ensure unique features in adata
         unique_features = adata.var[feature_name].unique()
@@ -123,14 +130,16 @@ class SCFind:
                 if not scipy.sparse.isspmatrix_csr(cell_type_exp):
                     cell_type_exp = cell_type_exp.tocsr()
 
-                ef.indexMatrix(new_cell_types[cell_type], cell_type_exp, cell_type_genes)
+                ef.indexMatrix(new_cell_types[cell_type], cell_type_exp, cell_type_genes, if_expression)
             else:
-                ef.indexMatrix_dense(new_cell_types[cell_type], cell_type_exp, cell_type_genes)
+                ef.indexMatrix_dense(new_cell_types[cell_type], cell_type_exp, cell_type_genes, if_expression)
 
         self.index = ef
         self.datasets = [tissue_modified]
         self.index_exist = True
-        self.metadata = {dataset_id: [f'{tissue_modified}.{ct}' for ct in cell_types]}
+        ct_count = adata.obs[cell_type_label].value_counts().to_frame()
+        ct_count.index = [f'{tissue_modified}.{ct}' for ct in ct_count.index]
+        self.metadata = {dataset_id: ct_count}
 
     def saveObject(self, file: str) -> None:
         """
@@ -161,6 +170,7 @@ class SCFind:
         saved_result = {'serialized': self.serialized,
                         'datasets': self.datasets,
                         'metadata': self.metadata,
+                        'if_expression': self.if_expression
                         }
 
         # Save the serialized object to a file
@@ -206,6 +216,7 @@ class SCFind:
         self.serialized = None
         self.index_exist = True
         self.metadata = loaded_object['metadata']
+        self.if_expression = loaded_object['if_expression']
 
 
     def mergeDataset(self, new_object: 'SCFind') -> None:
@@ -231,6 +242,9 @@ class SCFind:
         if not self.index_exist:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
+        
+        if self.if_expression != new_object.if_expression:
+            raise ValueError("Cannot merge objects with different expression settings.")
 
         # Update datasets
         all_datasets = set(self.datasets).union(new_object.datasets)
@@ -247,14 +261,21 @@ class SCFind:
         self.metadata.update(new_object.metadata)
 
         print(f"Merging {new_object.datasets} ... ")
-        self.index.updateDB(new_object.index)
+        if self.if_expression:
+            # Merge data with expression data using original mege method
+            self.index.mergeDB(new_object.index, )
+        else:
+            # Merge data without expression using updateDB method
+            self.index.updateDB(new_object.index,)
 
-    def mergeAnnData(self, adata: AnnData,
+    def mergeAnnData(self, 
+                     adata: AnnData,
                      tissue: str,
                      dataset_id: str,
                      feature_name: str = 'gene',
                      cell_type_label: str = 'cell_type',
-                     qb: int = 2
+                     qb: int = 2,
+                     if_expression: bool = False
                      ) -> None:
         """
         Merge index from an AnnData object into the current SCFind object
@@ -278,6 +299,11 @@ class SCFind:
 
         qb: int, default=2
             Number of bits per cell that are going to be used for quantile compression of the expression data.
+        
+        if_expression: bool, default=False
+            If True, the expression data will be stored in the index. 
+            We set this as True when building index for HuBMAP dataset, and set this as False when building index for each cell type.
+
 
         Returns
         -------
@@ -285,6 +311,9 @@ class SCFind:
             Update attributes
 
         """
+
+        if self.if_expression != if_expression:
+            raise ValueError("Cannot merge objects with different expression settings.")
 
         if not self.index_exist:
             raise ValueError("SCFind index is not built. Please build index first by calling \
@@ -298,6 +327,7 @@ class SCFind:
             feature_name=feature_name,
             cell_type_label=cell_type_label,
             qb=qb,
+            if_expression=if_expression,
             )
         self.mergeDataset(new_object)
 
@@ -372,6 +402,10 @@ class SCFind:
         if not self.index_exist:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
+        
+        if not self.if_expression:
+            raise ValueError("The index is built without expression data. \
+            It doesn't support retrieving expression data.")
         
         cell_type = self._select_celltype(cell_type)
 
@@ -1229,6 +1263,7 @@ class SCFind:
                             feature_name: str = 'feature_name',
                             cell_type_label: str = 'cell_type',
                             qb: int = 2,
+                            if_expression: bool = False,
                             ) -> 'SCFind':
         """
         Build a SCFind index.
@@ -1254,6 +1289,10 @@ class SCFind:
         qb: int, default=2
             Number of bits per cell that are going to be used for quantile compression of the expression data.
 
+        if_expression: bool, default=False
+            If True, the expression data will be stored in the index. 
+            We set this as True when building index for HuBMAP dataset, and set this as False when building index for each cell type.
+
         Returns
         -------
         A SCFind object.
@@ -1265,7 +1304,9 @@ class SCFind:
             tissue=tissue,
             feature_name=feature_name,
             cell_type_label=cell_type_label, 
-            qb=qb)
+            qb=qb,
+            if_expression=if_expression,
+            )
         return scf_object
 
     def _select_datasets(self,
@@ -1518,8 +1559,10 @@ class SCFind:
         -------
         A list of datasets that contain the cell type.
         """
-        cell_type = self._select_celltype(cell_type)[0]
-        datasets = [d for d, cts in self.metadata.items() if cell_type in cts]
+        cell_type_filter = self._select_celltype(cell_type)[0]
+        if len(cell_type_filter) == 0:
+            print(f'{cell_type} is not found in the index.')
+        datasets = [d for d, ct_count in self.metadata.items() if cell_type_filter in ct_count.index]
 
         return datasets
 

@@ -116,9 +116,7 @@ long EliasFanoDB::eliasFanoCodingNoExpr(const std::vector<int> &ids, int total_c
     ef.H[m - 1] = true;
   }
 
-  // std::cout<<"before push back: ef_data.size() = " << ef_data.size() << std::endl;
   ef_data.push_back(ef);
-  // std::cout<<"after push back: ef_data.size() = " << ef_data.size() << std::endl;
 
   return ef_data.size() - 1;
 }
@@ -158,9 +156,7 @@ long EliasFanoDB::eliasFanoCoding(const std::vector<int> &ids, const std::vector
     ef.H[m - 1] = true;
   }
 
-  std::cout<<"before push back: ef_data.size() = " << ef_data.size() << std::endl;
   ef_data.push_back(ef);
-  std::cout<<"after push back: ef_data.size() = " << ef_data.size() << std::endl;
 
   return ef_data.size() - 1;
 }
@@ -361,7 +357,7 @@ int EliasFanoDB::queryZeroGeneSupport(const py::list &datasets) const
 }
 
 // This is invoked on slices of the expression matrix of the dataset
-long EliasFanoDB::encodeMatrix(const std::string &cell_type_name, const py::object &csr_mat, const py::list &cell_type_genes)
+long EliasFanoDB::encodeMatrix(const std::string &cell_type_name, const py::object &csr_mat, const py::list &cell_type_genes, const bool if_expression)
 {
   // Change python sparse matrix to arma::sp_mat
   const arma::sp_mat gene_matrix = csr_to_sp_mat(csr_mat);
@@ -419,8 +415,12 @@ long EliasFanoDB::encodeMatrix(const std::string &cell_type_name, const py::obje
 
     gene_it->second.total_reads += ids.size();
 
-    // auto ef_index = eliasFanoCoding(ids, denseVector);
-    auto ef_index = eliasFanoCodingNoExpr(ids, cell_type.total_cells);
+    long ef_index;
+    if (if_expression){
+      ef_index = eliasFanoCoding(ids, denseVector);
+    }else{
+      ef_index = eliasFanoCodingNoExpr(ids, cell_type.total_cells);
+    }
     if (ef_index != -1)
     {
       db_entry->second.insert(std::make_pair(cell_type_id, ef_index));
@@ -443,7 +443,7 @@ long EliasFanoDB::encodeMatrix(const std::string &cell_type_name, const py::obje
 
 
 // Encode dense matrix
-long EliasFanoDB::encodeMatrix_dense(const std::string &cell_type_name, const py::array_t<double> &dense_mat, const py::list &cell_type_genes)
+long EliasFanoDB::encodeMatrix_dense(const std::string &cell_type_name, const py::array_t<double> &dense_mat, const py::list &cell_type_genes, const bool if_expression)
 {
   CellType cell_type;
   cell_type.name = cell_type_name;
@@ -500,8 +500,13 @@ long EliasFanoDB::encodeMatrix_dense(const std::string &cell_type_name, const py
 
     gene_it->second.total_reads += ids.size();
 
-    // auto ef_index = eliasFanoCoding(ids, denseVector);
-    auto ef_index = eliasFanoCodingNoExpr(ids, cell_type.total_cells);
+    long ef_index;
+    if (if_expression){
+      ef_index = eliasFanoCoding(ids, denseVector);    
+    }else{
+      ef_index = eliasFanoCodingNoExpr(ids, cell_type.total_cells);
+    }
+
     if (ef_index != -1)
     {
       db_entry->second.insert(std::make_pair(cell_type_id, ef_index));
@@ -1271,64 +1276,64 @@ int EliasFanoDB::updateDB(const EliasFanoDB &db)
   // the DB will grow by this amount of cells in newly added data
   this->total_cells += extdb.total_cells;
   
-  // 记录各个细胞类型的新旧ID映射和细胞ID偏移量
+  // Record the mapping between incoming cell types and existing cell types
   std::map<CellTypeID, CellTypeID> cell_type_id_map;
   std::map<CellTypeID, int> cell_id_offsets;
   
-  // 处理细胞类型 - 标识重复和新的细胞类型
+  // Process the incoming cell types
+  // 1. Check if the cell type already exists in the current database
   for (auto const &ct : extdb.inverse_cell_type)
   {
     auto existing_ct = this->cell_types.find(ct.name);
     if (existing_ct != this->cell_types.end())
     {
-      // 找到重复的细胞类型
+      // Find the existing cell type
       CellTypeID existing_id = existing_ct->second;
       CellTypeID incoming_id = extdb.cell_types.at(ct.name);
       
       cell_type_id_map[incoming_id] = existing_id;
       
-      // 使用total_cells作为max_cell_id，因为它们是等价的
+      // Set total_cells as max_cell_id. 
       int max_cell_id = this->inverse_cell_type[existing_id].total_cells;
       cell_id_offsets[incoming_id] = max_cell_id;
       
-      // 更新现有细胞类型的总细胞数
+      // Update the total number of cells
       this->inverse_cell_type[existing_id].total_cells += ct.total_cells;
     }
     else
     {
-      // 新的细胞类型
+      // New cell type
       int new_ct_id = insertNewCellType(ct);
       cell_type_id_map[extdb.cell_types.at(ct.name)] = new_ct_id;
-      cell_id_offsets[extdb.cell_types.at(ct.name)] = 0; // 新细胞类型不需要偏移
+      cell_id_offsets[extdb.cell_types.at(ct.name)] = 0; // No shift for new cell type
     }
   }
 
-  // 处理cells集合 - 为减少重复遍历，我们先收集所有需要添加的细胞
+  // Process cells set - to reduce iteration, we first collect all cells to add
   for (auto const &cell : extdb.cells)
   {
     CellID old_cell_id = cell.first;
     CellTypeID old_cell_type_id = old_cell_id.cell_type;
     int old_cell_num = old_cell_id.cell_id;
     
-    // 获取映射到的新细胞类型ID
+    // Set the cell type ID to new cell type
     CellTypeID new_cell_type_id = cell_type_id_map[old_cell_type_id];
     
-    // 对于重复的细胞类型，调整细胞ID
+    // Update cell type if for existing ones
     int offset = cell_id_offsets[old_cell_type_id];
     int new_cell_num = old_cell_num + offset;
     
-    // 创建新的CellID和相应的元数据
+    // Create new CellID and corresponding metadata
     CellID new_cell_id(new_cell_type_id, new_cell_num);
     this->cells.insert({new_cell_id, cell.second});
   }
 
-  // 创建映射，跟踪每个基因和细胞类型对应的新EliasFano编码
-  // 键: <基因名, 细胞类型ID>, 值: <旧IDs, 新IDs>
+  // Map EliasFano coding for each pair of gene and cell type
+  // key: <gene, cell_type_id>, value: <old IDs, new IDs>
   std::map<std::pair<GeneName, CellTypeID>, 
            std::pair<std::vector<int>, std::vector<int>>> gene_ct_ids;
   
-  // 遍历输入数据库的索引，收集所有需要合并或添加的数据
-  // 简化后的代码
+  // Iterate through the input in database. Collect data to add or update
   for (auto &gene : extdb.index)
   {
     const std::string &gene_name = gene.first;
@@ -1339,27 +1344,11 @@ int EliasFanoDB::updateDB(const EliasFanoDB &db)
       CellTypeID new_ct_id = cell_type_id_map[old_ct_id];
       int offset = cell_id_offsets[old_ct_id];
       
-      // 提取原始IDs和表达值
+      // Extract the original IDs from the input database. 
       const EliasFano &ef = extdb.ef_data[ct.second];
       std::vector<int> old_ids = extdb.eliasFanoDecoding(ef);
-
-      // if (old_ids.size() != expr_values.size()) 
-      // {
-      //   std::cerr << "Error: Length mismatch between IDs and expression values for gene " 
-      //             << gene_name << " in cell type " << extdb.inverse_cell_type[old_ct_id].name 
-      //             << ". IDs length: " << old_ids.size() 
-      //             << ", Expression values length: " << expr_values.size() << std::endl;
-        
-      //   // 记录更多详细信息以便调试
-      //   std::cerr << "Gene container size: " << gene.second.size() << std::endl;
-      //   std::cerr << "Cell type ID: " << old_ct_id << std::endl;
-      //   std::cerr << "EF data index: " << ct.second << std::endl;
-        
-      //   return 100;
-        
-      // }
       
-      // 调整IDs以反映新的偏移量
+      // Adjust IDs to reflect the new offset
       std::vector<int> new_ids;
       new_ids.reserve(old_ids.size());
       for (int id : old_ids)
@@ -1385,49 +1374,45 @@ int EliasFanoDB::updateDB(const EliasFanoDB &db)
     auto &old_ids = id_pair.first;
     auto &new_ids = id_pair.second;
     
-    // 更新或创建基因元数据
+    // Update or merge index
     auto gene_it = this->genes.find(gene_name);
     if (gene_it == this->genes.end())
     {
-      // 这是一个新基因
+      // New gene
       this->genes[gene_name] = extdb.genes.at(gene_name);
     }
     else
     {
-      // 这是一个现有基因，合并元数据
+      // Merge the new gene data with the existing one
       gene_it->second.merge(extdb.genes.at(gene_name));
     }
     
-    // 检查此基因和细胞类型组合是否已存在
+    // Check if the gene already exists in the index
     auto index_it = this->index.find(gene_name);
     if (index_it == this->index.end())
     {
-      // 这是一个新基因，创建索引项
+      // Create a new entry for this gene
       this->index[gene_name] = EliasFanoDB::GeneContainer();
       index_it = this->index.find(gene_name);
     }
     
-    // 检查此细胞类型是否已经有此基因的EliasFano编码
+    // Check if a coding already exists for this gene in this cell type. If so, update it
     auto ef_it = index_it->second.find(cell_type_id);
     if (ef_it != index_it->second.end())
     {
-      // std::cout<<"found exising index"<<std::endl;
-      // 已经存在编码，需要合并
+      // Found existing index
       EliasFano &existing_ef = this->ef_data[ef_it->second];
       std::vector<int> existing_ids = this->eliasFanoDecoding(existing_ef);
       
-      // 合并IDs
+      // Merge IDs
       std::vector<int> combined_ids;
       combined_ids.reserve(existing_ids.size() + new_ids.size());
       
-      // 首先添加现有的数据
+      // Add existing data
       combined_ids.insert(combined_ids.end(), existing_ids.begin(), existing_ids.end());
       
-      // 然后添加新的数据
+      // Add new data
       combined_ids.insert(combined_ids.end(), new_ids.begin(), new_ids.end());
-      
-      // 创建新的EliasFano编码
-      // 在updateDB函数修改
       
       int cell_type_total_cells = this->inverse_cell_type[cell_type_id].total_cells;
     
@@ -1435,14 +1420,13 @@ int EliasFanoDB::updateDB(const EliasFanoDB &db)
     }
     else
     {
-      // 这个基因在此细胞类型中还没有编码，创建一个新的
+      // No coding exists for this gene in this cell type, create a new one
       int cell_type_total_cells = this->inverse_cell_type[cell_type_id].total_cells;
       int new_ef_id = eliasFanoCodingNoExpr(new_ids, cell_type_total_cells);
 
       if (new_ef_id != -1)
       {
         index_it->second[cell_type_id] = new_ef_id;
-        // std::cout<<"for new gene "<<gene_name<<" and cell type "<<cell_type_id<<" pair, creating new index success!"<<std::endl;
       }
     }
   }
