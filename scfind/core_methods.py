@@ -1287,6 +1287,23 @@ class SCFind:
                 )
             )
             return results_df
+    def cellTypeCountforDataset(self,
+                                dataset: str,):
+        """
+        Count the cell counts of cell types in specific dataset.
+        Parameters
+        ----------
+        dataset : str
+            The HuBMAP dataset ID to count cell types for.
+        Returns
+        -------
+        pd.DataFrame
+            The dataframe indicating the cell counts of cell types.
+        """
+        if not dataset in self.metadata.keys():
+            raise ValueError(f"Dataset {dataset} not found in index.")
+        
+        return self.metadata[dataset]
 
 
 
