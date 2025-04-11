@@ -1383,7 +1383,6 @@ int EliasFanoDB::updateDB(const EliasFanoDB &db)
     const GeneName &gene_name = key.first;
     CellTypeID cell_type_id = key.second;
 
-    auto &old_ids = id_pair.first;
     auto &new_ids = id_pair.second;
     
     // Update or merge index
