@@ -94,7 +94,7 @@ class EliasFanoDB
 
   const CellType& getCellType(const CellTypeName& name ) const;
 
-  const py::tuple getCellTypeMatrix(const CellTypeName& cell_type) const;
+  const py::tuple getCellTypeMatrix(const CellTypeName& cell_type, const py::list& gene_list) const;
 
   int numberOfCellTypes(const py::list&) const;
 
