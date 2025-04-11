@@ -384,6 +384,7 @@ class SCFind:
 
     def getCellTypeExpression(self,
                               cell_type: str,
+                              gene_list: Union[str, List[str]],
                               ) -> AnnData:
         """
         Retrieve expression matrix of provided cell types.
@@ -391,8 +392,11 @@ class SCFind:
         Parameters
         ----------
         cell_type: str
-            The cell type for which we want to retrieve the expression data.
-            The format should be tissue.cell_type
+            The cell type for which we want to retrieve the expression data. 
+            This calculation is supposed to perform for HuBMAP dataset.
+        
+        gene_list: str or list of str
+            Genes to be searched in the gene index.
 
         Returns
         -------
@@ -408,10 +412,11 @@ class SCFind:
             It doesn't support retrieving expression data.")
         
         cell_type = self._select_celltype(cell_type)
+        gene_list = self._case_correct(gene_list)
 
         adatas = []
         for ct in cell_type:
-            result = self.index.getCellTypeExpression(ct)
+            result = self.index.getCellTypeExpression(ct, gene_list)
             
             if len(result) == 5:  # sparse matrix
                 values, row_indices, col_indices, n_cells, feature_names = result
@@ -429,6 +434,91 @@ class SCFind:
         adata_all = ad.concat(adatas, join='outer')
 
         return adata_all
+
+    def getCellTypeExpressionBinData(self,
+                                     cell_type: str,
+                                     gene_list: Union[str, List[str]],
+                                     bin_length: int = 100,
+                                     ) -> Dict:
+        """
+        Retrieve expression matrix of provided cell types.
+
+        Parameters
+        ----------
+        cell_type: str
+            The cell type for which we want to retrieve the expression data.
+            This calculation is supposed to perform for HuBMAP dataset.
+        
+        gene_list: str or list of str
+            Genes to be searched in the gene index.
+
+        bin_length: int, default=100
+            The length of each bin for binning the expression data.
+
+        Returns
+        -------
+        Dict
+            A dictionary containing the binned expression data for each gene.
+        """
+        if not self.index_exist:
+            raise ValueError("SCFind index is not built. Please build index first by calling \
+            object.buildCellTypeIndex().")
+        
+        if not self.if_expression:
+            raise ValueError("The index is built without expression data. \
+            It doesn't support retrieving expression data.")
+        
+        cell_type = self._select_celltype(cell_type)
+        gene_list = self._case_correct(gene_list)
+        
+        pred = self.getCellTypeExpression(cell_type=cell_type, gene_list=gene_list)
+
+        # Convert to dense array for processing
+        if scipy.sparse.issparse(pred.X):
+            expr_matrix = pred.X.toarray()
+        else:
+            expr_matrix = pred.X
+        
+        # Find global maximum for consistent binning across genes
+        max_val = int(np.ceil(expr_matrix.max()))
+        bins = np.arange(0, max_val + bin_length, bin_length)
+        
+        # Create result dictionary
+        result = {}
+        
+        # Process all genes at once using vectorized operations
+        for i, gene in enumerate(pred.var_names):
+            gene_expr = expr_matrix[:, i]
+            
+            # Count zeros separately
+            non_zero_expr = gene_expr[gene_expr > 0]
+            
+            # Set up gene dictionary
+            gene_bins = {}
+            
+            if len(non_zero_expr) > 0:
+                # Calculate histogram once
+                hist, _ = np.histogram(non_zero_expr, bins=bins)
+                
+                # Create bin keys and add counts
+                bin_keys = [f"{int(bins[j])}-{int(bins[j+1])}" for j in range(len(hist))]
+                for j, count in enumerate(hist):
+                    if count > 0:  # Only add bins with positive counts
+                        gene_bins[bin_keys[j]] = int(count)
+            else:
+                continue
+            
+            result[gene] = gene_bins
+        
+        return result
+
+
+        
+
+
+
+        return 
+    
 
     def cellTypeMarkers(self,
                         cell_types: Union[str, List[str]],

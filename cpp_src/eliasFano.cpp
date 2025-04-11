@@ -198,70 +198,83 @@ const CellType &EliasFanoDB::getCellType(const CellTypeName &name) const
 }
 
 
-const py::tuple EliasFanoDB::getCellTypeMatrix(const CellTypeName &cell_type) const
+const py::tuple EliasFanoDB::getCellTypeMatrix(const CellTypeName &cell_type, const py::list &gene_list) const
 {
   const CellType ct = getCellType(cell_type);
   const CellTypeID ct_id = this->cell_types.at(cell_type);
-  std::vector<GeneName> feature_names;
+  std::vector<GeneName> all_genes_in_celltype;
+  std::vector<GeneName> filtered_feature_names;
+  std::unordered_map<GeneName, size_t> gene_to_index;
+  
+  // Convert input gene_list to a set for faster lookup
+  std::unordered_set<GeneName> requested_genes;
+  if (!gene_list.is_none() && gene_list.size() > 0) {
+    for (auto const &gene : gene_list) {
+      requested_genes.insert(gene.cast<std::string>());
+    }
+  }
 
-  // Feature number will be the feature names size
-  for (auto const &record : index)
-  {
+  // Get all genes in this cell type and filter by requested genes
+  for (auto const &record : index) {
     auto rec_it = record.second.find(ct_id);
-    if (rec_it != record.second.end())
-    {
-      feature_names.push_back(record.first);
+    if (rec_it != record.second.end()) {
+      all_genes_in_celltype.push_back(record.first);
+      
+      // If gene_list is provided, only include genes that are in the list
+      if (requested_genes.find(record.first) != requested_genes.end()) {
+        gene_to_index[record.first] = filtered_feature_names.size();
+        filtered_feature_names.push_back(record.first);
+      }
     }
   }
 
   int qb = quantization_bits;
-  size_t feature_name_size = feature_names.size();
+  size_t feature_name_size = filtered_feature_names.size();
 
   // Determine return sparse matrix or dense matrix
   bool issparse = this->issparse;
-  if (issparse)
-  {
+  if (issparse) {
     std::vector<double> values; // non-zero values
     std::vector<ssize_t> row_indices; // row index
     std::vector<ssize_t> col_indices; // column index
 
-    for (size_t row = 0; row < feature_name_size; ++row) {
-      // for each gene in the database extract the values
-      const auto &rec = getEntry(feature_names[row], cell_type);
+    for (size_t col = 0; col < feature_name_size; ++col) {
+      // for each filtered gene in the database extract the values
+      const auto &gene_name = filtered_feature_names[col];
+      const auto &rec = getEntry(gene_name, cell_type);
       const auto indices_val = eliasFanoDecoding(rec);
       const auto exp_val = decompressValues(rec.expr, qb);
 
       // check if indices_val and exp_val have the same amount of elements
       if (indices_val.size() != exp_val.size()) {
-          std::cerr << "not equal number of genes" << std::endl;
-          std::cerr << feature_names[row] << std::endl;
-          continue;
+        std::cerr << "not equal number of genes" << std::endl;
+        std::cerr << gene_name << std::endl;
+        continue;
       }
 
       // store non-zero values and indices
       for (size_t i = 0; i < indices_val.size(); ++i) {
-          values.push_back(exp_val[i]);
-          row_indices.push_back(indices_val[i]-1);  // store the cell index of non-zero values
-          col_indices.push_back(row);  // store the gene id
+        values.push_back(exp_val[i]);
+        row_indices.push_back(indices_val[i]-1);  // store the cell index of non-zero values
+        col_indices.push_back(col);  // store the gene id
       }
     }
 
     int n_cells = ct.total_cells;
 
     // return a python tuple including sparse matrix information and gene names
-    return py::make_tuple(values, row_indices, col_indices, n_cells, feature_names);
-  }
-  else
-  {
+    return py::make_tuple(values, row_indices, col_indices, n_cells, filtered_feature_names);
+  } else {
     // Initialize matrix
     py::array_t<double> mat(feature_name_size * ct.total_cells);
     std::vector<ssize_t> shape = { static_cast<ssize_t>(ct.total_cells), static_cast<ssize_t>(feature_name_size) };
     mat.resize(shape);
 
-    // for the sparse expression  vector matrix get the indices and deconvolute the quantized values
-    for (size_t col = 0; col < feature_name_size; ++col){
+    // for the sparse expression vector matrix get the indices and deconvolute the quantized values
+    for (size_t col = 0; col < feature_name_size; ++col) {
       // for each gene in the database extract the values
-      const auto &rec = getEntry(feature_names[col], cell_type);
+      const auto &gene_name = filtered_feature_names[col];
+      const auto &rec = getEntry(gene_name, cell_type);
       const auto indices_val = eliasFanoDecoding(rec);
       const auto exp_val = decompressValues(rec.expr, qb);
 
@@ -275,24 +288,23 @@ const py::tuple EliasFanoDB::getCellTypeMatrix(const CellTypeName &cell_type) co
 
       if (exp_val.size() != indices_val.size()) {
         std::cerr << "Sparse vector representation mismatch" << std::endl;
-        std::cerr << feature_names[col] << std::endl;
+        std::cerr << gene_name << std::endl;
         continue;
       }
 
-      for (auto const &index : indices_val)
-      {
+      for (auto const &index : indices_val) {
         na_vec[index - 1] = (*exp_it);
         ++exp_it;
       }
 
       for (int row = 0; row < mat.shape(0); ++row) {
-          *mat.mutable_data(row, col) = na_vec[row];
+        *mat.mutable_data(row, col) = na_vec[row];
       }
     }
-    return py::make_tuple(mat, feature_names);
+    return py::make_tuple(mat, filtered_feature_names);
   }
-
 }
+
 
 const EliasFano &EliasFanoDB::getEntry(const GeneName &gene_name, const CellTypeName &cell_type) const
 {
