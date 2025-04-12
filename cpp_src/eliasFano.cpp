@@ -139,7 +139,8 @@ long EliasFanoDB::eliasFanoCoding(const std::vector<int> &ids, const std::vector
 
   BoolVec::iterator l_iter = ef.L.begin();
 //  Quantile lognormalcdf(const std::vector<int>& ids, const py::array_t<double>& v, unsigned int bits, bool raw_counts = true);
-  ef.expr = lognormalcdf(ids, values, this->quantization_bits);
+  
+  ef.expr = lognormalcdf(ids, values, this->quantization_bits, this->raw_counts);
 
   for (auto expr = ids.begin(); expr != ids.end(); ++expr)
   {
@@ -243,7 +244,7 @@ const py::tuple EliasFanoDB::getCellTypeMatrix(const CellTypeName &cell_type, co
       const auto &gene_name = filtered_feature_names[col];
       const auto &rec = getEntry(gene_name, cell_type);
       const auto indices_val = eliasFanoDecoding(rec);
-      const auto exp_val = decompressValues(rec.expr, qb);
+      const auto exp_val = decompressValues(rec.expr, qb, this->raw_counts);
 
       // check if indices_val and exp_val have the same amount of elements
       if (indices_val.size() != exp_val.size()) {
@@ -276,7 +277,7 @@ const py::tuple EliasFanoDB::getCellTypeMatrix(const CellTypeName &cell_type, co
       const auto &gene_name = filtered_feature_names[col];
       const auto &rec = getEntry(gene_name, cell_type);
       const auto indices_val = eliasFanoDecoding(rec);
-      const auto exp_val = decompressValues(rec.expr, qb);
+      const auto exp_val = decompressValues(rec.expr, qb, this->raw_counts);
 
       if (indices_val.size() != exp_val.size()) {
         std::cerr << "not equal number of genes" << std::endl;
@@ -369,7 +370,7 @@ int EliasFanoDB::queryZeroGeneSupport(const py::list &datasets) const
 }
 
 // This is invoked on slices of the expression matrix of the dataset
-long EliasFanoDB::encodeMatrix(const std::string &cell_type_name, const py::object &csr_mat, const py::list &cell_type_genes, const bool if_expression)
+long EliasFanoDB::encodeMatrix(const std::string &cell_type_name, const py::object &csr_mat, const py::list &cell_type_genes, const bool if_expression, const bool raw_counts)
 {
   // Change python sparse matrix to arma::sp_mat
   const arma::sp_mat gene_matrix = csr_to_sp_mat(csr_mat);
@@ -383,6 +384,7 @@ long EliasFanoDB::encodeMatrix(const std::string &cell_type_name, const py::obje
   // Increase the cell number present in the index
   this->total_cells += gene_matrix.n_rows;
   this->issparse = true;
+  this->raw_counts = raw_counts;
 
   // Store the metadata for the cell
   std::vector<CellMeta> current_cells(gene_matrix.n_rows);

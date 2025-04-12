@@ -89,7 +89,7 @@ double lognormalinv(const double& p, const double& mu, const double& sigma)
 
 
 
-std::vector<double> decompressValues(const Quantile& q, const unsigned char& quantization_bits)
+std::vector<double> decompressValues(const Quantile& q, const unsigned char& quantization_bits, bool raw_counts = true)
 {
   int vector_size = q.quantile.size() / quantization_bits;
   std::vector<double> result(vector_size,0);
@@ -99,15 +99,12 @@ std::vector<double> decompressValues(const Quantile& q, const unsigned char& qua
     std::cerr << "Too much depth in the quantization bits!" << std::endl;
   }
   std::vector<double> bins((1 << quantization_bits));
-  double bins_size = bins.size() - 1;
-  // min value
 
-  for(int i = 0; i < bins_size; ++i)
-  {
-    
-    double cdf = (i + 0.5) / bins_size;
-    bins[i] = lognormalinv(cdf, q.mu, q.sigma);
+  double bins_size = (1 << quantization_bits) - 1; 
 
+  for(int i = 0; i <= bins_size; ++i) {
+      double cdf = i / (double)bins_size; // 或者 (i + 0.5) / bins_size 取决于如何解释bin的中点
+      bins[i] = lognormalinv(cdf, q.mu, q.sigma);
   }
 
   for (size_t i = 0; i < result.size(); ++i)
@@ -119,10 +116,14 @@ std::vector<double> decompressValues(const Quantile& q, const unsigned char& qua
     }
     result[i] = bins[quantile];
   }
+  if (raw_counts) {
+    for (size_t i = 0; i < result.size(); ++i) {
+        result[i] = std::exp(result[i]) - 1;
+    }
+  }
+
   return result;
 }
-
-
 
 
 int byteToBoolVector(const std::vector<char> buf, std::vector<bool>& bool_vec)

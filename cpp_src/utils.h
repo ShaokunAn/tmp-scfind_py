@@ -65,8 +65,7 @@ int byteToBoolVector(const std::vector<char> buf, std::vector<bool>& bool_vec);
 
 int getSizeBoolVector(const std::vector<bool>& v);
 
-
-std::vector<double> decompressValues(const Quantile& q, const unsigned char& quantization_bits);
+std::vector<double> decompressValues(const Quantile& q, const unsigned char& quantization_bits, bool raw_counts = true);
 
 double fisher_exact_test(int a, int b, int c, int d);
 
