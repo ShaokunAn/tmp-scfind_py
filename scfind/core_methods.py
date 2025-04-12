@@ -36,6 +36,7 @@ class SCFind:
                            cell_type_label: str = 'cell_type',
                            qb: int = 2,
                            if_expression: bool = False,
+                           raw_counts: bool = True,
                            ) -> None:
         """
         Build an index for cell types based on the given AnnData data.
@@ -64,6 +65,10 @@ class SCFind:
         if_expression: bool, default=False
             If True, the expression data will be stored in the index. 
             We set this as True when building index for HuBMAP dataset, and set this as False when building index for each cell type.
+
+        raw_counts: bool, default=True
+            If True, the raw counts will be used for indexing and will be log(x+1) transformed. 
+            If False, the original data will be used instead.
 
         Returns
         -------
@@ -130,9 +135,9 @@ class SCFind:
                 if not scipy.sparse.isspmatrix_csr(cell_type_exp):
                     cell_type_exp = cell_type_exp.tocsr()
 
-                ef.indexMatrix(new_cell_types[cell_type], cell_type_exp, cell_type_genes, if_expression)
+                ef.indexMatrix(new_cell_types[cell_type], cell_type_exp, cell_type_genes, if_expression, raw_counts)
             else:
-                ef.indexMatrix_dense(new_cell_types[cell_type], cell_type_exp, cell_type_genes, if_expression)
+                ef.indexMatrix_dense(new_cell_types[cell_type], cell_type_exp, cell_type_genes, if_expression, raw_counts)
 
         self.index = ef
         self.datasets = [tissue_modified]
