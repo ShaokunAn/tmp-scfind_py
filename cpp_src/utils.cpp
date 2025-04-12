@@ -89,7 +89,7 @@ double lognormalinv(const double& p, const double& mu, const double& sigma)
 
 
 
-std::vector<double> decompressValues(const Quantile& q, const unsigned char& quantization_bits, bool raw_counts = true)
+std::vector<double> decompressValues(const Quantile& q, const unsigned char& quantization_bits, const bool raw_counts)
 {
   int vector_size = q.quantile.size() / quantization_bits;
   std::vector<double> result(vector_size,0);

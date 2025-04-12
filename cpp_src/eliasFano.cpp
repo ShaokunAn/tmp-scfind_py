@@ -457,7 +457,7 @@ long EliasFanoDB::encodeMatrix(const std::string &cell_type_name, const py::obje
 
 
 // Encode dense matrix
-long EliasFanoDB::encodeMatrix_dense(const std::string &cell_type_name, const py::array_t<double> &dense_mat, const py::list &cell_type_genes, const bool if_expression)
+long EliasFanoDB::encodeMatrix_dense(const std::string &cell_type_name, const py::array_t<double> &dense_mat, const py::list &cell_type_genes, const bool if_expression, const bool raw_counts)
 {
   CellType cell_type;
   cell_type.name = cell_type_name;

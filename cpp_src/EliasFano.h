@@ -76,10 +76,10 @@ class EliasFanoDB
   int queryZeroGeneSupport(const py::list&) const;
 
   // This is invoked on slices of the expression matrix of the dataset
-  long encodeMatrix(const std::string& cell_type_name, const py::object& csr_obj, const py::list& cell_type_genes, const bool if_expression, const bool raw_counts=true
+  long encodeMatrix(const std::string& cell_type_name, const py::object& csr_obj, const py::list& cell_type_genes, const bool if_expression, const bool raw_counts=true);
 
   // Same as encodeMatrix but to handle dense matrix
-  long encodeMatrix_dense(const std::string &cell_type_name, const py::array_t<double> &dense_mat, const py::list &cell_type_genes, const bool if_expression, const bool raw_counts=false
+  long encodeMatrix_dense(const std::string &cell_type_name, const py::array_t<double> &dense_mat, const py::list &cell_type_genes, const bool if_expression, const bool raw_counts=true);
 
 
   py::list total_genes() const;
