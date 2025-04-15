@@ -561,9 +561,10 @@ py::dict EliasFanoDB::totalCells(const py::list &genes,
     inv_ct[ct.second] = ct.first;
   }
 
-  int count = 0;
+  int count;
   for (auto const &g : str)
   {
+    count = 0;
     auto git = this->index.find(g);
     if (git != this->index.end())
     {
