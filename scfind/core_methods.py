@@ -1,7 +1,9 @@
 from hmac import new
 import pickle
 import types
+import scanpy as sc
 from typing import List, Optional, Union, Dict
+from collections import defaultdict
 
 import numpy as np
 import pandas as pd
@@ -28,12 +30,16 @@ class SCFind:
         # and keep empty for index with HuBMAP datasetID 
         self.metadata = {}  
         self.index_exist = False
+        self.clid_to_label = defaultdict(set)  # {CLID: set(label)}
+        self.label_to_clid = defaultdict(set) # {label: set(CLID)}
+
 
     def buildCellTypeIndex(self, adata: AnnData,
                            tissue: str,
                            dataset_id: str,
                            feature_name: str = 'gene',
-                           cell_type_label: str = 'cell_type',
+                           cell_type_label: str = 'predicted_label',
+                           clid_label: str = 'predicted_CLID',  # New parameter for CLID
                            qb: int = 2,
                            if_expression: bool = False,
                            raw_counts: bool = True,
@@ -56,8 +62,11 @@ class SCFind:
         feature_name: str, default='gene'
             The label or key in the AnnData object's variables (var) that corresponds to the feature names.
 
-        cell_type_label: str, default='cell_type'
+        cell_type_label: str, default='predicted_label'
             The label or key in the AnnData object's observations (obs) that corresponds to the cell type.
+
+        clid_label: str, default='predicted_CLID'
+            The label or key in the AnnData object's observations (obs) that corresponds to the CLID.
 
         qb: int, default=2
             Number of bits per cell that are going to be used for quantile compression of the expression data.
@@ -94,6 +103,13 @@ class SCFind:
             cell_types_all = adata.obs[cell_type_label].astype('category')
         except KeyError:
             raise ValueError(f"'{cell_type_label}' not found in adata.obs.")
+        
+        # Get CLIDs if available
+        has_clid = clid_label in adata.obs.columns
+        if has_clid:
+            clids_all = adata.obs[clid_label]
+        else:
+            print(f"Warning: '{clid_label}' not found in adata.obs. CLID mapping won't be created.")
 
         cell_types = cell_types_all.cat.categories.tolist()
         # Assuming tissue and cell_types are already defined
@@ -104,6 +120,26 @@ class SCFind:
             raise ValueError("No cell types found in the provided AnnData object.")
 
         print(f"Generating index for {tissue_modified}")
+
+        # when (not if_expression) is true, it means we are building index for each cell type
+        # and we only build the two maps for index with cell types
+        if has_clid and not self.if_expression:
+            for cell_type in cell_types:
+                # Get indices of cells with this cell type
+                cell_indices = cell_types_all == cell_type
+                if sum(cell_indices) > 0:
+                    # Get unique CLIDs for this cell type
+                    unique_clids = clids_all[cell_indices].unique()
+                    for clid in unique_clids:
+                        if pd.notna(clid):  # Skip NaN values
+                            # Store the formatted cell type name with the CLID
+                            formatted_name = new_cell_types[cell_type]
+                            self.clid_to_label[clid] = set([formatted_name])
+                            # A CLID might map to multiple labels, so we'll store as a list
+                            if formatted_name not in self.label_to_clid:
+                                self.label_to_clid[formatted_name] = set()
+                            if clid not in self.label_to_clid[formatted_name]:
+                                self.label_to_clid[formatted_name].update([clid])
 
         non_zero_cell_types = []
         # Get expression data
@@ -175,7 +211,9 @@ class SCFind:
         saved_result = {'serialized': self.serialized,
                         'datasets': self.datasets,
                         'metadata': self.metadata,
-                        'if_expression': self.if_expression
+                        'if_expression': self.if_expression,
+                        'clid_to_label': self.clid_to_label,
+                        'label_to_clid': self.label_to_clid
                         }
 
         # Save the serialized object to a file
@@ -222,6 +260,8 @@ class SCFind:
         self.index_exist = True
         self.metadata = loaded_object['metadata']
         self.if_expression = loaded_object['if_expression']
+        self.clid_to_label = loaded_object['clid_to_label']
+        self.label_to_clid = loaded_object['label_to_clid']
 
 
     def mergeDataset(self, new_object: 'SCFind') -> None:
@@ -264,6 +304,20 @@ class SCFind:
                              Shouldn't update index with duplicate datasets.")
         
         self.metadata.update(new_object.metadata)
+        
+        # Merge clid_to_label and label_to_clid for index with cell types
+        if not self.if_expression:
+            merged_clid_to_label = defaultdict(set)
+            for d in [self.clid_to_label, new_object.clid_to_label]:
+                for k, v in d.items():
+                    merged_clid_to_label[k].update(v)
+            self.clid_to_label = merged_clid_to_label
+
+            merged_label_to_clid = defaultdict(set)
+            for d in [self.label_to_clid, new_object.label_to_clid]:
+                for k, v in d.items():
+                    merged_label_to_clid[k].update(v)
+            self.label_to_clid = merged_label_to_clid
 
         print(f"Merging {new_object.datasets} ... ")
         if self.if_expression:
@@ -439,14 +493,17 @@ class SCFind:
         adata_all = ad.concat(adatas, join='outer')
 
         return adata_all
+    
+
 
     def getCellTypeExpressionBinData(self,
-                                     cell_type: str,
-                                     gene_list: Union[str, List[str]],
-                                     bin_length: int = 100,
-                                     ) -> Dict:
+                                  cell_type: str,
+                                  gene_list: Union[str, List[str]],
+                                  bin_length: int = 1
+                                  ) -> Dict:
         """
-        Retrieve expression matrix of provided cell types.
+        Retrieve binned expression data of provided cell types.
+        We use log(x+1) transformed data for HuBMAP dataset.
 
         Parameters
         ----------
@@ -457,7 +514,7 @@ class SCFind:
         gene_list: str or list of str
             Genes to be searched in the gene index.
 
-        bin_length: int, default=100
+        bin_length: int, default=1
             The length of each bin for binning the expression data.
 
         Returns
@@ -473,57 +530,17 @@ class SCFind:
             raise ValueError("The index is built without expression data. \
             It doesn't support retrieving expression data.")
         
-        cell_type = self._select_celltype(cell_type)
+        cell_type = self._select_celltype(cell_type)[0]
         gene_list = self._case_correct(gene_list)
-        
-        pred = self.getCellTypeExpression(cell_type=cell_type, gene_list=gene_list)
 
-        # Convert to dense array for processing
-        if scipy.sparse.issparse(pred.X):
-            expr_matrix = pred.X.toarray()
-        else:
-            expr_matrix = pred.X
-        
-        # Find global maximum for consistent binning across genes
-        max_val = int(np.ceil(expr_matrix.max()))
-        bins = np.arange(0, max_val + bin_length, bin_length)
-        
-        # Create result dictionary
-        result = {}
-        
-        # Process all genes at once using vectorized operations
-        for i, gene in enumerate(pred.var_names):
-            gene_expr = expr_matrix[:, i]
-            
-            # Count zeros separately
-            non_zero_expr = gene_expr[gene_expr > 0]
-            
-            # Set up gene dictionary
-            gene_bins = {}
-            
-            if len(non_zero_expr) > 0:
-                # Calculate histogram once
-                hist, _ = np.histogram(non_zero_expr, bins=bins)
-                
-                # Create bin keys and add counts
-                bin_keys = [f"{int(bins[j])}-{int(bins[j+1])}" for j in range(len(hist))]
-                for j, count in enumerate(hist):
-                    if count > 0:  # Only add bins with positive counts
-                        gene_bins[bin_keys[j]] = int(count)
-            else:
-                continue
-            
-            result[gene] = gene_bins
-        
-        return result
-
+        if len(gene_list) == 0 or len(cell_type) == 0:
+            raise ValueError("No genes found in the gene list or no cell types found.")
 
         
-
-
-
-        return 
+        gene_bins = self.index.getCellTypeExpressionBinData(cell_type, gene_list, bin_length)
     
+        return gene_bins
+
 
     def cellTypeMarkers(self,
                         cell_types: Union[str, List[str]],
@@ -1386,6 +1403,7 @@ class SCFind:
                                 dataset: str,):
         """
         Count the cell counts of cell types in specific dataset.
+        This method should only be accessible for index with cell type labels.
         Parameters
         ----------
         dataset : str
@@ -1399,6 +1417,59 @@ class SCFind:
             raise ValueError(f"Dataset {dataset} not found in index.")
         
         return self.metadata[dataset]
+    
+    def cellTypeCountForTissue(self,
+                               tissue: str,):
+        """
+        Count the cell counts of cell types in specific tissue, which is self.datasets for index_celltype.
+        This method should only be accessible for index with cell type labels.
+
+        Parameters
+        ----------
+        tissue : str
+            The tissue to count cell types for.
+        Returns
+        -------
+        pd.DataFrame
+            The dataframe indicating the cell counts of cell types.
+        """
+
+        if not tissue in self.datasets:
+            raise ValueError(f"Tissue {tissue} not found in index.")
+        
+        celltype_tissue = self.cellTypeNames(tissue)
+
+        celltype_count = {ct: [self.index.getCellTypeMeta(ct)['total_cells']] for ct in celltype_tissue}
+        df_count = pd.DataFrame(celltype_count).T
+        df_count.columns = ['cell_count']
+
+    
+    def CLID2CellType(self,
+                      CLID_label: str,
+                      ):
+        """
+        Convert CLID to cell type.
+        """
+        return self.index.clid_to_label(CLID_label)
+    
+    def CellType2CLID(self,
+                      cell_type: str,
+                      ):
+        """
+        Convert cell type to CLID.
+        """
+        return self.index.label_to_clid(cell_type)  
+        
+        
+    def getDatasets(self):
+        """
+        Get the list of datasets in index. 
+        This method can be accessible for both index. But we suggest to call the index with cell type labels.
+        """
+
+        return list(self.metadata.keys())
+    
+        
 
 
 

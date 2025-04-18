@@ -97,6 +97,9 @@ class EliasFanoDB
   const CellType& getCellType(const CellTypeName& name ) const;
 
   const py::tuple getCellTypeMatrix(const CellTypeName& cell_type, const py::list& gene_list) const;
+  // Add this to the public section of the EliasFanoDB class
+
+  py::dict getCellTypeExpressionBinData(const std::string &cell_type, const py::list &gene_list, const int bin_length = 1) const;
 
   int numberOfCellTypes(const py::list&) const;
 

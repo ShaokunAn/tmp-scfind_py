@@ -306,6 +306,105 @@ const py::tuple EliasFanoDB::getCellTypeMatrix(const CellTypeName &cell_type, co
   }
 }
 
+py::dict EliasFanoDB::getCellTypeExpressionBinData(const std::string &cell_type, const py::list &gene_list, const int bin_length) const
+{
+    // Get expression data
+    py::tuple matrix_result = getCellTypeMatrix(cell_type, gene_list);
+    py::dict result_dict;
+    
+    bool is_sparse = this->issparse;
+    
+    std::vector<std::string> genes = gene_list.cast<std::vector<std::string>>();
+    std::vector<std::string> feature_names;
+    
+    // Check if gene_list and feature_names are the same later
+    if (is_sparse) {
+        feature_names = matrix_result[4].cast<std::vector<std::string>>();
+    } else {
+        feature_names = matrix_result[1].cast<std::vector<std::string>>();
+    }
+
+    bool raw_counts = this->raw_counts;
+    
+    // Process for each gene
+    for (const auto& gene : genes) {
+      auto it = std::find(feature_names.begin(), feature_names.end(), gene);
+      if (it == feature_names.end()) {
+          continue; // skip if gene not found
+      }
+        
+      int gene_index = std::distance(feature_names.begin(), it);
+        
+      // Get non-zero expression values
+      std::vector<double> non_zero_expr;
+        
+      if (is_sparse) {
+        std::vector<double> values = matrix_result[0].cast<std::vector<double>>();
+        std::vector<ssize_t> col_indices = matrix_result[2].cast<std::vector<ssize_t>>();
+        
+        for (size_t i = 0; i < values.size(); ++i) {
+          if (col_indices[i] == gene_index && values[i] > 0) {
+            double value = values[i];
+                
+            if (raw_counts) {
+              value = log1p(value);
+            }
+            non_zero_expr.push_back(value);
+          }
+        }
+      } else {
+        // Dense matrix
+        py::array_t<double> mat = matrix_result[0].cast<py::array_t<double>>();
+        auto r = mat.unchecked<2>();
+        int n_cells = r.shape(0);
+        
+        // Get non-zero expression values
+        for (int i = 0; i < n_cells; ++i) {
+          double value = r(i, gene_index);
+          if (value > 0) {
+            if (raw_counts) {
+              value = log1p(value);
+            }
+            non_zero_expr.push_back(value);
+          }
+        }
+      }
+        
+      // Skip genes with no expression
+      if (non_zero_expr.empty()) {
+          continue;
+      }
+        
+      // Get the maximum expression value to determine the number of bins
+      double max_val = *std::max_element(non_zero_expr.begin(), non_zero_expr.end());
+      int num_bins = std::ceil(max_val / bin_length);
+      
+      // Create bins of cell counts
+      std::vector<int> bin_counts(num_bins, 0);
+      
+      for (const auto& value : non_zero_expr) {
+        int bin_index = static_cast<int>(value / bin_length);
+        if (bin_index >= num_bins) {
+            bin_index = num_bins - 1; // handle boundaries
+        }
+        bin_counts[bin_index]++;
+      }
+      
+      // Create dict for gene expression bins
+        py::dict gene_bins;
+        for (int i = 0; i < num_bins; ++i) {
+          if (bin_counts[i] > 0) {
+              std::string bin_key = std::to_string(i * bin_length) + "-" + std::to_string((i + 1) * bin_length);
+              gene_bins[py::str(bin_key)] = bin_counts[i];
+          }
+        }
+        
+        // Store the gene bins in the result dictionary
+        result_dict[py::str(gene)] = gene_bins;
+    }
+    
+    return result_dict;
+}
 
 const EliasFano &EliasFanoDB::getEntry(const GeneName &gene_name, const CellTypeName &cell_type) const
 {
@@ -1692,6 +1791,7 @@ PYBIND11_MODULE(EliasFanoDB, m){
     .def("getCellTypes", &EliasFanoDB::getCellTypes)
     .def("getCellMeta", &EliasFanoDB::getCellMeta)
     .def("getCellTypeExpression", &EliasFanoDB::getCellTypeMatrix)
+    .def("getCellTypeExpressionBinData", &EliasFanoDB::getCellTypeExpressionBinData)
     .def("getCellTypeMeta", &EliasFanoDB::getCellTypeMeta)
     .def("evaluateCellTypeMarkersAND", &EliasFanoDB::evaluateCellTypeMarkersAND)
     .def("evaluateCellTypeMarkers", &EliasFanoDB::evaluateCellTypeMarkers)

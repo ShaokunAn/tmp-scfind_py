@@ -52,7 +52,7 @@ inline double normalCDF(const double& x, const double& mu, const double& sigma)
   // it depends on the cmath library where it contains the erfc function
   // it return a value ranging from zero to one
 
-  return 1 - (0.5 * erfc( (x - mu)/ (sigma * M_SQRT1_2) ));
+  return 1 - (0.5 * erfc( (x - mu)/ (sigma * M_SQRT2) ));
 
 }
 
