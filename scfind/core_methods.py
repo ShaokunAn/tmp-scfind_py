@@ -1451,7 +1451,7 @@ class SCFind:
         """
         Convert CLID to cell type.
         """
-        return self.index.clid_to_label(CLID_label)
+        return self.clid_to_label.get(CLID_label)
     
     def CellType2CLID(self,
                       cell_type: str,
@@ -1459,7 +1459,7 @@ class SCFind:
         """
         Convert cell type to CLID.
         """
-        return self.index.label_to_clid(cell_type)  
+        return self.label_to_clid.get(cell_type)  
         
         
     def getDatasets(self):
