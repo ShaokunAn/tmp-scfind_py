@@ -1442,6 +1442,7 @@ class SCFind:
         celltype_count = {ct: [self.index.getCellTypeMeta(ct)['total_cells']] for ct in celltype_tissue}
         df_count = pd.DataFrame(celltype_count).T
         df_count.columns = ['cell_count']
+        return df_count
 
     
     def CLID2CellType(self,
