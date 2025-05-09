@@ -306,7 +306,7 @@ const py::tuple EliasFanoDB::getCellTypeMatrix(const CellTypeName &cell_type, co
   }
 }
 
-py::dict EliasFanoDB::getCellTypeExpressionBinData(const std::string &cell_type, const py::list &gene_list, const int bin_length) const
+py::dict EliasFanoDB::getCellTypeExpressionBinData(const std::string &cell_type, const py::list &gene_list, const float bin_length) const
 {
     // Get expression data
     py::tuple matrix_result = getCellTypeMatrix(cell_type, gene_list);

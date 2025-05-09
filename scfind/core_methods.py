@@ -499,7 +499,7 @@ class SCFind:
     def getCellTypeExpressionBinData(self,
                                   cell_type: str,
                                   gene_list: Union[str, List[str]],
-                                  bin_length: int = 1
+                                  bin_length: float = 1.0
                                   ) -> Dict:
         """
         Retrieve binned expression data of provided cell types.
@@ -514,7 +514,7 @@ class SCFind:
         gene_list: str or list of str
             Genes to be searched in the gene index.
 
-        bin_length: int, default=1
+        bin_length: float, default=1.0
             The length of each bin for binning the expression data.
 
         Returns
