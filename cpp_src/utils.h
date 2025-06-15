@@ -52,13 +52,13 @@ inline double normalCDF(const double& x, const double& mu, const double& sigma)
   // it depends on the cmath library where it contains the erfc function
   // it return a value ranging from zero to one
 
-  return 1 - (0.5 * erfc( (x - mu)/ (sigma * M_SQRT1_2) ));
+  return 1 - (0.5 * erfc( (x - mu)/ (sigma * M_SQRT2) ));
 
 }
 
 // Accepts a vector, transforms and returns a quantization logical vector
 // This function aims for space efficiency of the expression vector
-Quantile lognormalcdf(const std::vector<int>& ids, const arma::rowvec& v, unsigned int bits, bool raw_counts = true);
+Quantile lognormalcdf(const std::vector<int>& ids, const std::vector<double>& v, unsigned int bits, bool raw_counts = true);
 
 
 int byteToBoolVector(const std::vector<char> buf, std::vector<bool>& bool_vec);
