@@ -81,7 +81,7 @@ py::bytes EliasFanoDB::getByteStream() const
   return byte_stream;
 }
 
-long EliasFanoDB::eliasFanoCoding(const std::vector<int> &ids, const arma::rowvec &values)
+long EliasFanoDB::eliasFanoCoding(const std::vector<int> &ids, const std::vector<double> &values)
 {
   if (ids.empty())
   {
@@ -99,7 +99,7 @@ long EliasFanoDB::eliasFanoCoding(const std::vector<int> &ids, const arma::rowve
 
   BoolVec::iterator l_iter = ef.L.begin();
 //  Quantile lognormalcdf(const std::vector<int>& ids, const py::array_t<double>& v, unsigned int bits, bool raw_counts = true);
-  ef.expr = lognormalcdf(ids, values, this->quantization_bits);
+  ef.expr = lognormalcdf(ids, values, this->quantization_bits, this->raw_counts);
 
   for (auto expr = ids.begin(); expr != ids.end(); ++expr)
   {
@@ -317,7 +317,7 @@ int EliasFanoDB::queryZeroGeneSupport(const py::list &datasets) const
 }
 
 // This is invoked on slices of the expression matrix of the dataset
-long EliasFanoDB::encodeMatrix(const std::string &cell_type_name, const py::object &csr_mat, const py::list &cell_type_genes)
+long EliasFanoDB::encodeMatrix(const std::string &cell_type_name, const py::object &csr_mat, const py::list &cell_type_genes, const bool raw_counts)
 {
   // Change python sparse matrix to arma::sp_mat
   const arma::sp_mat gene_matrix = csr_to_sp_mat(csr_mat);
@@ -331,6 +331,7 @@ long EliasFanoDB::encodeMatrix(const std::string &cell_type_name, const py::obje
   // Increase the cell number present in the index
   this->total_cells += gene_matrix.n_rows;
   this->issparse = true;
+  this->raw_counts = raw_counts;
 
   // Store the metadata for the cell
   std::vector<CellMeta> current_cells(gene_matrix.n_rows);
@@ -339,24 +340,23 @@ long EliasFanoDB::encodeMatrix(const std::string &cell_type_name, const py::obje
   {
     const arma::sp_colvec& expression_vector = gene_matrix.col(gene_col);
 
-    arma::rowvec denseVector(expression_vector.n_rows, arma::fill::zeros);
-    for (arma::sp_colvec::const_iterator it = expression_vector.begin(); it != expression_vector.end(); ++it)
+    std::vector<double> denseVector(gene_matrix.n_rows);
+    for (auto it = expression_vector.begin(); it != expression_vector.end(); ++it)
     {
-        denseVector(it.row()) = (*it);
+        denseVector[it.row()] = it.value();
     }
 
     std::deque<int> sparse_index;
 
-    for (arma::sp_rowvec::const_iterator it = expression_vector.begin(); it != expression_vector.end(); ++it)
+    for (size_t cell_idx =0; cell_idx < gene_matrix.n_rows; ++cell_idx)
     {
-      int col_idx = it.row();
-      double value = (*it);
+      double value = denseVector[cell_idx];
 
       if (value > 0)
       {
-        current_cells[col_idx].reads += value;
-        current_cells[col_idx].features++;
-        sparse_index.push_back(col_idx + 1); // 1 based indexing
+        current_cells[cell_idx].reads += value;
+        current_cells[cell_idx].features++;
+        sparse_index.push_back(cell_idx + 1); // 1 based indexing
       }
     }
 
@@ -398,7 +398,7 @@ long EliasFanoDB::encodeMatrix(const std::string &cell_type_name, const py::obje
 
 
 // Encode dense matrix
-long EliasFanoDB::encodeMatrix_dense(const std::string &cell_type_name, const py::array_t<double> &dense_mat, const py::list &cell_type_genes)
+long EliasFanoDB::encodeMatrix_dense(const std::string &cell_type_name, const py::array_t<double> &dense_mat, const py::list &cell_type_genes, const bool raw_counts)
 {
   CellType cell_type;
   cell_type.name = cell_type_name;
@@ -418,11 +418,11 @@ long EliasFanoDB::encodeMatrix_dense(const std::string &cell_type_name, const py
   for (int gene_col = 0; gene_col < total_genes; ++gene_col)
   {
     // auto expression_vector = dense_mat.unchecked<2>()(py::slice(0, total_cells, 1), gene_col);
-    arma::rowvec denseVector(total_cells);
+    std::vector<double> denseVector(total_cells, 0.0);
 
     auto dense_mat_proxy = dense_mat.unchecked<2>();
     for (int i = 0; i < total_cells; ++i) {
-        denseVector(i) = dense_mat_proxy(i, gene_col);
+        denseVector[i] = dense_mat_proxy(i, gene_col);
     }
 
     std::deque<int> sparse_index;
@@ -641,16 +641,15 @@ py::list EliasFanoDB::getCellTypeSupport(py::list &cell_types)
   {
     // TODO(Nikos) fix this, otherwise we will get a nice segfault no error control
     auto cit = this->cell_types.find(ct);
-    if (cit != this->cell_types.end())
-    {
-      ct_support.push_back(this->inverse_cell_type[cit->second].total_cells);
-    }
-    else
-    {
-      ct_support.push_back(0);
+    int num;
+    if (cit != this->cell_types.end()){
+      num = this->inverse_cell_type[cit->second].total_cells;
+      ct_support.push_back(num);
+    }else{
+      num = 0;
+      ct_support.push_back(num);
     }
   }
-
   return py::cast(ct_support);
 }
 
@@ -1227,12 +1226,20 @@ py::dict EliasFanoDB::getCellMeta(const std::string &ct, const int &num) const
 py::dict EliasFanoDB::getCellTypeMeta(const std::string &ct_name) const
 {
   const auto ct_it = this->cell_types.find(ct_name);
-  const CellType &ctmeta = this->inverse_cell_type[ct_it->second];
-
   py::dict result;
-  result["total_cells"] = py::cast(ctmeta.getTotalCells());
+  if (ct_it == this->cell_types.end())
+  {
+    std::cerr << "Cell type " << ct_name << " not found in the database" << std::endl;
+    result["total_cells"] = 0;
+    return result;
+  }else{
+    const CellType &ctmeta = this->inverse_cell_type[ct_it->second];
 
-  return result;
+    
+    result["total_cells"] = py::cast(ctmeta.getTotalCells());
+
+    return result;
+  }
 }
 
 const arma::sp_mat EliasFanoDB::csr_to_sp_mat(const py::object& csr_obj) {
@@ -1240,7 +1247,7 @@ const arma::sp_mat EliasFanoDB::csr_to_sp_mat(const py::object& csr_obj) {
       py::isinstance<py::array_t<int>>(csr_obj.attr("indices")) &&
       py::isinstance<py::array_t<double>>(csr_obj.attr("data"))) {
     py::tuple shape = csr_obj.attr("shape").cast<py::tuple>();
-    int nrows = shape[0].cast<int>();
+    size_t nrows = shape[0].cast<size_t>();
 
     // Get csr_matrix data, indices, and indptr
     py::array_t<int> indptr = csr_obj.attr("indptr").cast<py::array_t<int>>();
@@ -1251,13 +1258,12 @@ const arma::sp_mat EliasFanoDB::csr_to_sp_mat(const py::object& csr_obj) {
     int* p_indices = indices.mutable_data();
     double* p_data = data.mutable_data();
 
-    int nnz = data.size();  // number of non-zero elements
+    size_t nnz = data.size();  // number of non-zero elements
 
     arma::umat locations(2, nnz);
     arma::vec values(nnz);
 
-    arma::uword u_nrows = static_cast<arma::uword>(nrows);
-    for (arma::uword k = 0, i = 0; i < u_nrows; ++i) {
+    for (size_t k = 0, i = 0; i < nrows; ++i) {
       for (int j = p_indptr[i]; j < p_indptr[i + 1]; ++j) {
         locations(0, k) = i;               // row indices
         locations(1, k) = p_indices[j];    // column indices
@@ -1273,7 +1279,7 @@ const arma::sp_mat EliasFanoDB::csr_to_sp_mat(const py::object& csr_obj) {
              py::isinstance<py::array_t<double>>(csr_obj.attr("data")))
   {
     py::tuple shape = csr_obj.attr("shape").cast<py::tuple>();
-    int64_t nrows = shape[0].cast<int64_t>();
+    size_t nrows = shape[0].cast<size_t>();
 
     // Get csr_matrix data, indices, and indptr
     py::array_t<int64_t> indptr = csr_obj.attr("indptr").cast<py::array_t<int64_t>>();
@@ -1289,8 +1295,7 @@ const arma::sp_mat EliasFanoDB::csr_to_sp_mat(const py::object& csr_obj) {
     arma::umat locations(2, nnz);
     arma::vec values(nnz);
 
-    arma::uword u_nrows = static_cast<arma::uword>(nrows);
-    for (arma::uword k = 0, i = 0; i < u_nrows; ++i) {
+    for (size_t k = 0, i = 0; i < nrows; ++i) {
       for (int64_t j = p_indptr[i]; j < p_indptr[i + 1]; ++j) {
         locations(0, k) = i;               // row indices
         locations(1, k) = p_indices[j];    // column indices
