@@ -12,16 +12,14 @@ cpp_extension = Extension(
         "cpp_src/serialization.cpp",
         "cpp_src/utils.cpp",
     ],
-    include_dirs=["cpp_src", "/opt/homebrew/Cellar/armadillo/12.6.5/include"] + [pybind11.get_include()],
-    libraries=["armadillo"],
-    library_dirs=["/opt/homebrew/Cellar/armadillo/12.6.5/lib"],
+    include_dirs=["cpp_src"] + [pybind11.get_include()],
     language="c++",
-    extra_compile_args=["-std=c++14"],
+    extra_compile_args=["-std=c++11"],
 )
 
 setup(
     name='scfind',
-    version='0.1',
+    version='0.1.1',
     packages=find_packages(),
     author='Nikolaos Patikasi, Shaokun An',
     author_email='shan12@bwh.harvard.edu',

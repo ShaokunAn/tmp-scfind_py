@@ -189,7 +189,7 @@ const py::tuple EliasFanoDB::getCellTypeMatrix(const CellTypeName &cell_type) co
       // for each gene in the database extract the values
       const auto &rec = getEntry(feature_names[row], cell_type);
       const auto indices_val = eliasFanoDecoding(rec);
-      const auto exp_val = decompressValues(rec.expr, qb);
+      const auto exp_val = decompressValues(rec.expr, qb, this->raw_counts);
 
       // check if indices_val and exp_val have the same amount of elements
       if (indices_val.size() != exp_val.size()) {
@@ -223,7 +223,7 @@ const py::tuple EliasFanoDB::getCellTypeMatrix(const CellTypeName &cell_type) co
       // for each gene in the database extract the values
       const auto &rec = getEntry(feature_names[col], cell_type);
       const auto indices_val = eliasFanoDecoding(rec);
-      const auto exp_val = decompressValues(rec.expr, qb);
+      const auto exp_val = decompressValues(rec.expr, qb, this->raw_counts);
 
       if (indices_val.size() != exp_val.size()) {
         std::cerr << "not equal number of genes" << std::endl;

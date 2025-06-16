@@ -66,7 +66,7 @@ int byteToBoolVector(const std::vector<char> buf, std::vector<bool>& bool_vec);
 int getSizeBoolVector(const std::vector<bool>& v);
 
 
-std::vector<double> decompressValues(const Quantile& q, const unsigned char& quantization_bits);
+std::vector<double> decompressValues(const Quantile& q, const unsigned char& quantization_bits, const bool raw_counts = true);
 
 
 
