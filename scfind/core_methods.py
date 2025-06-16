@@ -27,7 +27,8 @@ class SCFind:
                            dataset_name: str,
                            feature_name: str = 'feature_name',
                            cell_type_label: str = 'cell_type',
-                           qb: int = 2
+                           qb: int = 2,
+                           raw_counts: bool = True,
                            ) -> None:
         """
         Build an index for cell types based on the given AnnData data.
@@ -49,6 +50,10 @@ class SCFind:
 
         qb: int, default=2
             Number of bits per cell that are going to be used for quantile compression of the expression data.
+
+        raw_counts: bool, default=True
+            If True, the raw counts will be used for indexing and will be log(x+1) transformed. 
+            If False, the original data will be used instead.
 
         Returns
         -------
@@ -105,13 +110,13 @@ class SCFind:
 
             cell_type_exp = cell_type_exp.astype(np.float64)
             if is_sparse:
-                # make sure the sparse matrix is csr format
+                # Ensure the sparse matrix is csr format
                 if not scipy.sparse.isspmatrix_csr(cell_type_exp):
                     cell_type_exp = cell_type_exp.tocsr()
 
-                ef.indexMatrix(new_cell_types[cell_type], cell_type_exp, cell_type_genes)
+                ef.indexMatrix(new_cell_types[cell_type], cell_type_exp, cell_type_genes, raw_counts)
             else:
-                ef.indexMatrix_dense(new_cell_types[cell_type], cell_type_exp, cell_type_genes)
+                ef.indexMatrix_dense(new_cell_types[cell_type], cell_type_exp, cell_type_genes, raw_counts)
 
         self.index = ef
         self.datasets = [dataset_name]
@@ -229,7 +234,8 @@ class SCFind:
                      dataset_name: str,
                      feature_name: str = 'feature_name',
                      cell_type_label: str = 'cell_type1',
-                     qb: int = 2
+                     qb: int = 2,
+                     raw_counts: bool = True,
                      ) -> None:
         """
         Merge index from an AnnData object into the current SCFind object
@@ -251,6 +257,10 @@ class SCFind:
         qb: int, default=2
             Number of bits per cell that are going to be used for quantile compression of the expression data.
 
+        raw_counts: bool, default=True
+            If True, the raw counts will be used for indexing and will be log(x+1) transformed. 
+            If False, the original data will be used instead.
+
 
         Returns
         -------
@@ -268,6 +278,7 @@ class SCFind:
                                               feature_name,
                                               cell_type_label,
                                               qb,
+                                              raw_counts
                                               )
         self.mergeDataset(new_object)
 
@@ -395,26 +406,17 @@ class SCFind:
         if not self.index_exist:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
+        
+        cell_types = self._select_celltype(cell_types)
+        background_cell_types = self._select_celltype(background_cell_types)
 
-        if background_cell_types is None:
-            background_cell_types = self.cellTypeNames()
-
-        if isinstance(background_cell_types, str):
-            background_cell_types = [background_cell_types]
-
-        if isinstance(cell_types, str):
-            cell_types = [cell_types]
-
-        background_cell_types_set = set(background_cell_types)
-        background_cell_types_set.update(set(cell_types))
-
-        background_cell_types = list(background_cell_types_set)
+        background_cell_types = list(set(background_cell_types).union(cell_types))
 
         all_cell_types = self.index.cellTypeMarkers(cell_types, background_cell_types)
         all_cell_types = pd.DataFrame(all_cell_types)
 
         if sort_field not in all_cell_types.keys():
-            print(f"Column {sort_field} not found")
+            print(f"Column {sort_field} not found. F1 score would be used.")
             sort_field = 'f1'
 
         all_cell_types = all_cell_types.sort_values(by=[sort_field, 'genes'], ascending=[False, True],
@@ -452,8 +454,7 @@ class SCFind:
         if datasets is None:
             return all_cell_types
         else:
-            if isinstance(datasets, str):
-                datasets = [datasets]
+            datasets = self._select_datasets(datasets)
 
             filtered_cell_types = [cell_type for cell_type in all_cell_types
                                    if cell_type.split('.')[0] in datasets]
@@ -500,20 +501,11 @@ class SCFind:
         if not self.index_exist:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
+        
+        cell_types = self._select_celltype(cell_types)
+        background_cell_types = self._select_celltype(background_cell_types)
 
-        if background_cell_types is None:
-            print("Considering the whole database.")
-            background_cell_types = self.cellTypeNames()
-        if isinstance(background_cell_types, str):
-            background_cell_types = [background_cell_types]
-
-        if isinstance(cell_types, str):
-            cell_types = [cell_types]
-
-        background_cell_types_set = set(background_cell_types)
-        background_cell_types_set.update(set(cell_types))
-
-        background_cell_types = list(background_cell_types_set)
+        background_cell_types = list(set(background_cell_types).union(cell_types))
 
         all_cell_types = self.index.evaluateCellTypeMarkers(
             cell_types,
@@ -523,7 +515,7 @@ class SCFind:
         all_cell_types = pd.DataFrame(all_cell_types)
 
         if sort_field not in all_cell_types.columns:
-            print(f"Column {sort_field} not found")
+            print(f"Column {sort_field} not found. F1 score would be used.")
             sort_field = 'f1'
 
         all_cell_types = all_cell_types.sort_values(by=sort_field, ascending=False, ignore_index=True)
@@ -577,7 +569,7 @@ class SCFind:
             if not include_prefix:
                 # Split the 'cell_type' column and keep only the suffix
                 df['cell_type'] = df['cell_type'].str.split('.').str[-1]
-            return df
+            return df[df['adj-pval']<0.05]
         else:
             print("No Cell Is Found!")
             return pd.DataFrame({'cell_type': [], 'cell_hits': [],
@@ -614,10 +606,7 @@ class SCFind:
             raise ValueError("SCFind index is not built. Please build index first by calling \
             object.buildCellTypeIndex().")
 
-        if datasets is None:
-            datasets = self.datasets
-        else:
-            datasets = self._select_datasets(datasets)
+        datasets = self._select_datasets(datasets)
 
         if isinstance(gene_list, str):
             gene_list = [gene_list]
@@ -625,6 +614,10 @@ class SCFind:
         regular_genes = [gene for gene in gene_list if gene.startswith("-") or gene.startswith("*")]
         if len(regular_genes) == 0:
             sanitized_genes = self._case_correct(gene_list)
+            if not sanitized_genes:
+                # if no valid genes returned, return {}
+                print(f"All input genes are not valid.")
+                return {}
             if all(isinstance(gene, str) for gene in sanitized_genes):
                 cts = self.index.findCellTypes(sanitized_genes, datasets)
                 # in python, index starts at 0
@@ -820,7 +813,7 @@ class SCFind:
 
         print("Calculating cell-types for each gene...")
 
-        datasets = self.datasets if datasets is None else self._select_datasets(datasets)
+        datasets = self._select_datasets(datasets)
 
         if gene_list is None:
             res = self.index.geneSupportInCellTypes(self.index.genes(), datasets)
@@ -847,7 +840,7 @@ class SCFind:
             return {gene: 0 for gene in gene_list}
         else:
             df.iloc[:, 0] = df.iloc[:, 3].str.replace(r'^[^.]+\.', '', regex=True).apply(
-                lambda x: self.index.getCellTypeSupport([x])[0] * min_fraction)
+                lambda x: np.sum(self.index.getCellTypeSupport(self._select_celltype(x))) * min_fraction)
 
             df.loc[df.iloc[:, 0] < min_cells, df.columns[0]] = min_cells
             df = df[df.iloc[:, 2] > df.iloc[:, 0]]
@@ -1020,22 +1013,15 @@ class SCFind:
 
         print("Searching for gene signatures...")
 
-        if cell_types is None:
-            cell_types_all = self.index.getCellTypes()
-        else:
-            if isinstance(cell_types, str):
-                cell_types = [cell_types]
-
-            cell_types_all = [cell_type for cell_type in self.cellTypeNames() if
-                              cell_type.lower() in map(str.lower, cell_types)]
+        cell_types = self._select_celltype(cell_types)
 
         signatures = {}
 
         try:
-            if not cell_types_all:
+            if not cell_types:
                 raise ValueError(f"Ignored {', '.join(cell_types)}. Cell type not found in index.")
 
-            for cell_type in tqdm(cell_types_all, total=len(cell_types_all), desc="Processing cell types"):
+            for cell_type in tqdm(cell_types, total=len(cell_types), desc="Processing cell types"):
                 signatures[cell_type] = self._find_signature(cell_type, max_genes=max_genes, min_cells=min_cells,
                                                              max_pval=max_pval)
             return signatures
@@ -1080,10 +1066,7 @@ class SCFind:
 
         print("Searching for genes with similar pattern...")
 
-        if not datasets:
-            datasets = self.datasets
-        else:
-            datasets = self._select_datasets(datasets)
+        datasets = self._select_datasets(datasets)
 
         e = self.findCellTypes(gene_list, datasets)
         n_e = sum(len(sublist) for sublist in e.values())
@@ -1115,7 +1098,7 @@ class SCFind:
 
         else:
             print(f"Cannot find cell expressing {', '.join(gene_list)} in the index.")
-            return pd.DataFrame()
+            return pd.DataFrame(columns=['gene', 'Jaccard', 'overlap', 'n'])
 
     @staticmethod
     def _buildCellTypeIndex(self,
@@ -1124,6 +1107,7 @@ class SCFind:
                             feature_name: str = 'feature_name',
                             cell_type_label: str = 'cell_type',
                             qb: int = 2,
+                            raw_counts: bool = True
                             ) -> 'SCFind':
         """
         Build a SCFind index.
