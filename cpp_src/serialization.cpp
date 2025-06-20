@@ -65,7 +65,7 @@ void SerializationDB::deserializeEliasFano(EliasFano& ef, int quantization_bits)
   read(H_size);
   read(L_size);
   read(quant_size);
-
+  
   // Multiply by eight, shift three positions
   // std::cout << "l = " << ef.l << std::endl;
   // std::cout << "Read " << " H " << H_size << std::endl;
@@ -124,6 +124,7 @@ void SerializationDB::binarizeEliasFano(const EliasFano& ef)
   int H_size = getSizeBoolVector(ef.H);
   int L_size = getSizeBoolVector(ef.L);
   int quant_size = getSizeBoolVector(ef.expr.quantile);
+
   unsigned char t = 0xFF;
   write(t);
   write(H_size);
@@ -181,7 +182,6 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
   // Read the number of bits used for the quantization of the expression level quantiles
 
   read(efdb.quantization_bits);
-
 
   int genes_present;
   read(genes_present);
@@ -268,7 +268,6 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
     records.push_back(record);
   }
 
-
   for (int i = 0; i < index_size; i++)
   {
     EliasFano ef;
@@ -276,7 +275,6 @@ void SerializationDB::deserializeDB(EliasFanoDB& efdb)
     efdb.ef_data.push_back(ef);
 
   }
-
 
   // Build database
   for (auto const& r : records)
@@ -315,13 +313,13 @@ void SerializationDB::serialize(const EliasFanoDB& efdb)
 
   // Dump the total amount of cells
   write(efdb.total_cells);
+
   // Dump the quantization bits for storing the expression level of the genes
   write(efdb.quantization_bits);
 
   // Number of genes present in the database
   int genes_present = efdb.genes.size();
   write(genes_present);
-
 
   int gene_id = 0;
   // Read the gene names
@@ -360,14 +358,12 @@ void SerializationDB::serialize(const EliasFanoDB& efdb)
     write(cell_type_name_size);
     writeBuffer(&ct.name[0], cell_type_name_size);
     write(ct.total_cells);
-    //std::cout << ct << std::endl;
   }
 
   // Dump records
   // Write size of index, if it is 1:1 relation it should be consistent
   int index_size = efdb.ef_data.size();
   write(index_size);
-  std::cout << "Index size " << index_size << std::endl;
 
   for (auto const& g : efdb.index)
   {

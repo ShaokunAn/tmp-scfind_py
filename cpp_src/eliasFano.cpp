@@ -67,6 +67,7 @@ int EliasFanoDB::loadByteStream(const py::bytes &stream)
   clearDB();
   SerializationDB ser;
 
+
   ser.loadByteStream(stream);
   ser.deserializeDB(*this);
   return 0;
