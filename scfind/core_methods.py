@@ -1101,14 +1101,14 @@ class SCFind:
             return pd.DataFrame(columns=['gene', 'Jaccard', 'overlap', 'n'])
 
     @staticmethod
-    def _buildCellTypeIndex(self,
-                            adata: AnnData,
-                            dataset_name: str,
-                            feature_name: str = 'feature_name',
-                            cell_type_label: str = 'cell_type',
-                            qb: int = 2,
-                            raw_counts: bool = True
-                            ) -> 'SCFind':
+    def _buildCellTypeIndex(
+        adata: AnnData,
+        dataset_name: str,
+        feature_name: str = 'feature_name',
+        cell_type_label: str = 'cell_type',
+        qb: int = 2,
+        raw_counts: bool = True
+        ) -> 'SCFind':
         """
         Build a SCFind index.
 
