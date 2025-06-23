@@ -1,0 +1,3 @@
+include cpp_src/*.h
+include cpp_src/*.hpp
+include README.md
