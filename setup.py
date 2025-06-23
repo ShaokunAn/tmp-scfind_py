@@ -19,7 +19,7 @@ cpp_extension = Extension(
 
 setup(
     name='scfind',
-    version='0.1.1',
+    version='0.1.3',
     packages=find_packages(),
     author='Nikolaos Patikasi, Shaokun An',
     author_email='shan12@bwh.harvard.edu',

@@ -1169,6 +1169,45 @@ class SCFind:
 
         return datasets
 
+    def _select_celltype(self,
+                         cell_type: Union[str, List[str]] = None,
+                         ) -> List[str]:
+        """
+        Select valid tissue.celltype for input cell_type
+
+        Parameters
+        ----------
+        cell_type: string or list of strings, optional
+            List of cell types in the format of tissue.cell_type
+        
+        Returns
+        -------
+            List of valid tissue.cell_types
+
+        Raises
+        ------
+        Exception:
+            If none of the specified datasets exists in the available datasets list.
+        """
+
+        tissue_cell_type = self.index.getCellTypes()
+        if cell_type is None:    
+            return tissue_cell_type
+
+        if isinstance(cell_type, str):
+            cell_type = [cell_type]
+
+        missing_cell_type = set(cell_type).difference(tissue_cell_type)
+        if missing_cell_type:
+            print(f"Cell type(s) {', '.join(missing_cell_type)} do not exist in the database. Ignore them.")
+        
+        cell_type = list(set(cell_type).intersection(tissue_cell_type))
+
+        if len(cell_type) == 0:
+            raise ValueError("None of the input cell types are valid. Please check valid cell types by index.cellTypeNames")
+        
+        return cell_type
+
     def _case_correct(self,
                       gene_list: Union[str, List[str]],
                       if_print: bool = True,
