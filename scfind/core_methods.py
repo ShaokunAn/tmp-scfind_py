@@ -1469,6 +1469,23 @@ class SCFind:
         """
 
         return list(self.metadata.keys())
+
+    def getTotalCells():
+        """
+        Get the number of total cells in index.
+        This method can be accessible for both index. But we suggest to call the index with cell type labels.
+        """
+        n = self.index.getTotalCells(self.datasets)
+
+        return n
+
+    def getTotalCellTypes():
+        """
+        Get number of total cell types in index.
+        This method is exclusive to index with cell types for HuBMAP.
+        """
+        n_ct = len(index.cellTypeNames())
+        return n_ct
     
         
 
