@@ -1464,7 +1464,7 @@ class SCFind:
     def getTotalCells(self):
         """
         Get the number of total cells in index.
-        This method can be accessible for both index. But we suggest to call the index with cell type labels.
+        This method is based on the index with cell type labels.
         """
         n = self.index.getTotalCells(self.datasets)
 
