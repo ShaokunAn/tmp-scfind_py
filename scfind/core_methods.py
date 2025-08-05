@@ -1478,6 +1478,13 @@ class SCFind:
         n_ct = len(self.cellTypeNames())
         return n_ct
 
+    def getCLIDmappingAll(self):
+        """
+        Get the mapping between CLID labels and cell type names.
+        This method is exclusive to index with cell types for HuBMAP.
+        """
+        return self.clid_to_label
+
     @staticmethod
     def _buildCellTypeIndex(adata: AnnData,
                             tissue: str,
