@@ -1317,11 +1317,16 @@ class SCFind:
 
         datasets_with_genes = self.index.geneSupportInCellTypes(gene_list_filter, datasets)
         out_dict = {}
+        count_dict = {}
         for g, ds_dict in datasets_with_genes.items():
             ds_filter = [d.split('.')[0].replace('-', '.') for d, num in ds_dict.items() if num >= min_cells]
+            count_filter = [num for d, num in ds_dict.items() if num >= min_cells]
             out_dict[g] = ds_filter
+            count_dict[g] = count_filter
 
-        return out_dict
+
+        return out_dict, count_dict
+
 
     def de_genes(
             self,
@@ -1793,8 +1798,9 @@ class SCFind:
         if len(cell_type_filter) == 0:
             print(f'{cell_type} is not found in the index.')
         datasets = [d for d, ct_count in self.metadata.items() if cell_type_filter in ct_count.index]
+        cell_counts = [self.metadata[d].loc[cell_type_filter].values[0] for d in datasets]
 
-        return datasets
+        return datasets, cell_counts
 
     @staticmethod
     def _result_to_dataframe(result: Dict[str, Union[int, List[int]]]) -> pd.DataFrame:
