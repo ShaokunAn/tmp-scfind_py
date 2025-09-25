@@ -1463,8 +1463,10 @@ class SCFind:
         Get the list of datasets in index. 
         This method can be accessible for both index. But we suggest to call the index with cell type labels.
         """
+        datasets = list(self.metadata.keys())
+        counts = [t['count'][0] for t in self.metadata.values()]
 
-        return list(self.metadata.keys())
+        return datasets, counts
 
     def getTotalCells(self):
         """
